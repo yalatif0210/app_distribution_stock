@@ -35,6 +35,7 @@ export interface AnalyseProduit {
   produitId: number; produitCode: string; produitNom: string; produitUnite: string;
   structuresEnRupture: StructureAnalyse[]; structuresEnTension: StructureAnalyse[];
   structuresEnSurstock: StructureAnalyse[]; potentielRedistribution: string;
+  diagnostiqueSource?: string;
 }
 export interface StructureAnalyse {
   structureId: number; structureCode: string; structureNom: string;

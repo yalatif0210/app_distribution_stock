@@ -119,6 +119,26 @@ import {
         </mat-card-content>
       </mat-card>
 
+      <!-- Diagnostic produits sans source éligible -->
+      <mat-card *ngIf="produitsDiagnostique.length > 0"
+                style="margin-bottom:1.25rem;background:rgba(59,130,246,.03) !important;border:1px solid rgba(59,130,246,.18);">
+        <mat-card-content style="padding:.875rem 1rem;">
+          <div style="font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:.625rem;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:.4rem;">
+            <mat-icon style="font-size:16px;width:16px;height:16px;">info</mat-icon>
+            Diagnostic — produits sans redistribution possible
+          </div>
+          <div *ngFor="let p of produitsDiagnostique; let last = last"
+               [style.border-bottom]="last ? 'none' : '1px solid rgba(59,130,246,.1)'"
+               style="display:flex;gap:.625rem;align-items:flex-start;padding:.45rem 0;">
+            <mat-icon style="font-size:15px;width:15px;height:15px;color:#64748b;flex-shrink:0;margin-top:.1rem;">help_outline</mat-icon>
+            <div>
+              <span style="font-size:.825rem;font-weight:600;color:#374151;">{{ p.produitNom }}</span>
+              <span style="font-size:.8rem;color:#64748b;display:block;margin-top:.1rem;">{{ p.diagnostiqueSource }}</span>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- ── Panneau d'édition d'une ligne ── -->
       <mat-card *ngIf="editingLigne" style="margin-bottom:1.25rem;border:2px solid rgba(99,102,241,.35);">
         <mat-card-header style="padding:.75rem 1rem .4rem;background:rgba(99,102,241,.05);">
@@ -455,6 +475,26 @@ import {
 
         <ng-container *ngIf="!loadingAnalyse && analyse">
 
+          <!-- Diagnostic produits sans source éligible -->
+          <mat-card *ngIf="produitsDiagnostique.length > 0"
+                    style="margin-bottom:1.25rem;background:rgba(59,130,246,.03) !important;border:1px solid rgba(59,130,246,.18);">
+            <mat-card-content style="padding:.875rem 1rem;">
+              <div style="font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:.625rem;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:.4rem;">
+                <mat-icon style="font-size:16px;width:16px;height:16px;">info</mat-icon>
+                Diagnostic — produits sans redistribution possible
+              </div>
+              <div *ngFor="let p of produitsDiagnostique; let last = last"
+                   [style.border-bottom]="last ? 'none' : '1px solid rgba(59,130,246,.1)'"
+                   style="display:flex;gap:.625rem;align-items:flex-start;padding:.45rem 0;">
+                <mat-icon style="font-size:15px;width:15px;height:15px;color:#64748b;flex-shrink:0;margin-top:.1rem;">help_outline</mat-icon>
+                <div>
+                  <span style="font-size:.825rem;font-weight:600;color:#374151;">{{ p.produitNom }}</span>
+                  <span style="font-size:.8rem;color:#64748b;display:block;margin-top:.1rem;">{{ p.diagnostiqueSource }}</span>
+                </div>
+              </div>
+            </mat-card-content>
+          </mat-card>
+
           <!-- Aucun produit en tension -->
           <mat-card *ngIf="produitsEnTension.length === 0" style="margin-bottom:1.25rem;text-align:center;padding:1.5rem;color:var(--text-secondary);">
             <mat-icon style="font-size:2.5rem;width:2.5rem;height:2.5rem;margin-bottom:.5rem;display:block;margin-inline:auto;">inventory_2</mat-icon>
@@ -737,6 +777,10 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     return this.plan?.lignes?.filter(l => l.statut === 'EXECUTE').length ?? 0;
   }
 
+  get produitsDiagnostique() {
+    return (this.analyse?.produits ?? []).filter(p => !!p.diagnostiqueSource);
+  }
+
   get ciblesDisponibles(): StructureAnalyse[] {
     const p = this.produitsEnTension.find(p => p.produitId === this.nvl.produitId);
     return p ? [...(p.structuresEnRupture ?? []), ...(p.structuresEnTension ?? [])] : [];
@@ -803,7 +847,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
           this.dsLignes.paginator = this.paginator;
           this.dsLignes.sort = this.sort;
         });
-        if (!p.genereParlA && this.programmeId) {
+        if (this.programmeId) {
           this.chargerAnalyse();
         }
       },
