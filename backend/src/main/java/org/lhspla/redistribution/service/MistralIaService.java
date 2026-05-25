@@ -183,11 +183,13 @@ R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles
      b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable sans exception.
         cmm = 0 → pas de seuil MSD à respecter. date_peremption → urgence de redistribuer, pas un blocage.
      c) Risque de péremption — statut BIEN_STOCKE, SURVEILLER, ou SURSTOCK avec cmm > 0 :
-        mois_restants = (date_peremption − date_du_jour) en mois (valeur propre à CE produit dans CE site).
-        Si msd > mois_restants : surplus = stock_disponible − (mois_restants × cmm).
+        Utiliser le champ duree_avant_expiry_mois fourni dans les données source.
+        Ce champ est pré-calculé par le système : ne pas le recalculer ni le déduire du MSD.
+        duree_avant_expiry_mois = mois calendaires entre date_du_jour et source.date_peremption.
+        Ce n'est PAS le MSD de la source ni celui de la cible — c'est une durée calendaire.
+        Si msd > duree_avant_expiry_mois : surplus = stock_disponible − (duree_avant_expiry_mois × cmm).
         quantite_max_allouable = surplus uniquement. Ne JAMAIS utiliser stock_disponible entier.
-        La fraction (mois_restants × cmm) reste à la source pour sa propre consommation avant péremption.
-        Ne pas compromettre la couverture consommation de la source.
+        La fraction (duree_avant_expiry_mois × cmm) reste à la source pour sa propre consommation.
         Cette condition s'applique également aux sources issues de sites TENSION à double rôle.
      Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
@@ -217,12 +219,16 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'al
      Ne jamais transférer le risque de péremption de la source vers la cible.
 
      Capacité d'absorption d'une cible pour ce lot :
-       capacite_cible = cible_cmm × mois_restants_avant_peremption_source
-     cible_cmm est EXCLUSIVEMENT le champ "cmm" lu dans la liste cibles pour ce site précis.
-     Interdiction absolue : ne jamais calculer ou estimer la cmm à partir d'autres champs
-     (besoin, stock_disponible, msd, ou toute autre valeur). La cmm est un champ fourni — pas
-     un résultat à calculer. Confondre la cmm de la source (cmm=0 pour STOCK_DORMANT) avec
-     celle de la cible est une erreur grave qui fausse tous les calculs d'allocation.
+       capacite_cible = cible_cmm × source.duree_avant_expiry_mois
+     cible_cmm = champ "cmm" dans la liste cibles pour ce site (valeur fournie — ne pas calculer).
+     source.duree_avant_expiry_mois = champ "duree_avant_expiry_mois" dans les données source
+       (pré-calculé : mois calendaires jusqu'à expiry du lot source — ne pas recalculer).
+     ERREUR CRITIQUE À ÉVITER : confondre duree_avant_expiry_mois avec le MSD de la cible
+       (stock_cible/cmm_cible). Ce sont deux grandeurs différentes.
+       Exemple : duree_avant_expiry_mois=6.97 si source expire dans 209 jours ;
+                 MSD_cible=1.95 si la cible a 1950 unités et cmm=1000 — NE PAS confondre.
+     Confondre la cmm de la source (cmm=0 pour STOCK_DORMANT) avec celle de la cible est
+     également une erreur grave.
      Ne pas allouer à une cible plus que sa capacite_cible.
 
      Répartition :
@@ -243,8 +249,8 @@ R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-m�
      Exception 1 : ne s'applique PAS aux sources STOCK_DORMANT (cmm = 0 → voir R6).
      Exception 2 : pour une source éligible via Condition B (BIEN_STOCKE, SURVEILLER),
        R7 ne s'applique pas au-delà de la fraction de consommation avant péremption.
-       La source conserve uniquement : mois_restants × cmm (sa consommation propre avant expiry).
-       Le reste (surplus = stock_disponible − mois_restants × cmm) est entièrement redistribuable,
+       La source conserve uniquement : duree_avant_expiry_mois × cmm (consommation propre avant expiry).
+       Le reste (surplus = stock_disponible − duree_avant_expiry_mois × cmm) est redistribuable,
        même si cela amène le stock résiduel en dessous du seuil MSD habituel.
        Justification : le lot expire de toute façon — le seuil MSD ne peut pas être maintenu.
      On redistribue un excédent — on ne crée pas un nouveau problème.
@@ -351,6 +357,13 @@ Si aucune redistribution n'est possible, retourner mouvements = [] et expliquer 
         m.put("cmm",           s.getCmm());
         m.put("msd",           s.getMsd());
         m.put("date_peremption", s.getExpireDateFefo() != null ? s.getExpireDateFefo().toString() : null);
+        // Pré-calculé pour éviter toute confusion avec le MSD de la cible
+        if (s.getExpireDateFefo() != null) {
+            double jours = ChronoUnit.DAYS.between(LocalDate.now(), s.getExpireDateFefo());
+            m.put("duree_avant_expiry_mois", Math.max(0.0, Math.round(jours / 30.0 * 100.0) / 100.0));
+        } else {
+            m.put("duree_avant_expiry_mois", null);
+        }
         m.put("excedent",      s.getExcedent());
         return m;
     }
