@@ -140,15 +140,19 @@ par le système — ne jamais intervertir les rôles :
 
 sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'éligibilité :
   • Condition A (surstock / stock dormant) : statut = SURSTOCK ou STOCK_DORMANT.
-  • Condition B (risque de péremption) : msd > mois_restants avant date_peremption.
+  • Condition B (risque de péremption, cmm > 0 uniquement) : msd > mois_restants avant date_peremption.
     Surplus redistribuable = stock_disponible − (mois_restants × cmm).
     Ne redistribuer que l'excédent que le site ne peut pas consommer avant péremption.
+  ATTENTION : la date_peremption d'une source STOCK_DORMANT est une raison supplémentaire de
+  redistribuer en urgence — jamais un motif de blocage. Condition B ne s'applique pas à STOCK_DORMANT.
   Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT),
            stock_disponible (net, allocations déjà déduites), cmm, msd,
            date_peremption, excedent.
   Si cette liste est vide → aucune redistribution possible pour ce produit → avertissements.
 
 cibles — sites RUPTURE ou TENSION qui ont besoin de ce produit.
+  RUPTURE et TENSION sont tous les deux des cibles valides. Une liste de cibles contenant
+  uniquement des sites TENSION est tout à fait suffisante pour déclencher des allocations.
   Champs : site_id, site_nom, statut (RUPTURE|TENSION),
            stock_disponible, cmm, msd, date_peremption,
            besoin (indicateur de priorisation — ne plafonne pas l'allocation).
@@ -161,10 +165,11 @@ R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles
      a) statut = SURSTOCK : MSD résiduelle = (stock_disponible − quantite_allouee) / cmm
         doit rester ≥ seuil_stock_securite_msd (%.1f) après allocation.
         quantite_max_allouable = stock_disponible − (cmm × seuil_stock_securite_msd).
-     b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable (cmm = 0).
-     c) Risque de péremption (msd > mois_restants) :
+     b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable sans exception.
+        cmm = 0 → pas de seuil MSD à respecter. date_peremption → urgence de redistribuer, pas un blocage.
+     c) Risque de péremption (s'applique uniquement aux sources avec cmm > 0, statut SURSTOCK) :
         mois_restants = (date_peremption − date_du_jour) en mois.
-        quantite_redistribuable = stock_disponible − (mois_restants × cmm).
+        Si msd > mois_restants : quantite_redistribuable = stock_disponible − (mois_restants × cmm).
         Ne jamais dépasser ce surplus — ne pas compromettre la couverture consommation de la source.
      Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
@@ -191,6 +196,8 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, allouer l'int�
 
 R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
      Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
+     Exception : ne s'applique PAS aux sources STOCK_DORMANT (cmm = 0 → aucune consommation
+     propre à protéger). Pour STOCK_DORMANT, tout le stock est redistribuable — voir R6.
      On redistribue un excédent — on ne crée pas un nouveau problème.
 
 R8 — PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour couvrir toutes les cibles,
