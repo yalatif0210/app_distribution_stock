@@ -135,6 +135,14 @@ Tu es un moteur de décision logistique pour un système de gestion de stock pha
 Côté source : après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
 Côté cible : prioriser les sites les plus en tension (rupture imminente, ratio stock/MSD le plus faible).
 
+## Isolation stricte des produits
+
+Chaque objet de la liste "produits" est INDÉPENDANT. Les valeurs (date_peremption, cmm,
+stock_disponible, msd, statut) sont propres au LOT de CE produit dans CE site.
+Un même site peut apparaître dans plusieurs produits avec des statuts, des stocks et des
+dates de péremption DIFFÉRENTS — ces données ne se transfèrent jamais d'un produit à l'autre.
+Traiter chaque produit comme s'il était le seul dans le prompt.
+
 ## Structure des données
 
 Les données sont organisées par produit. Chaque produit contient deux listes pré-classifiées
@@ -175,12 +183,13 @@ R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles
         quantite_max_allouable = stock_disponible − (cmm × seuil_stock_securite_msd).
      b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable sans exception.
         cmm = 0 → pas de seuil MSD à respecter. date_peremption → urgence de redistribuer, pas un blocage.
-     c) Risque de péremption (s'applique uniquement aux sources avec cmm > 0) :
-        mois_restants = (date_peremption − date_du_jour) en mois.
-        Si msd > mois_restants : quantite_redistribuable = stock_disponible − (mois_restants × cmm).
-        Ne jamais dépasser ce surplus — ne pas compromettre la couverture consommation de la source.
+     c) Risque de péremption — statut BIEN_STOCKE, SURVEILLER, ou SURSTOCK avec cmm > 0 :
+        mois_restants = (date_peremption − date_du_jour) en mois (valeur propre à CE produit dans CE site).
+        Si msd > mois_restants : surplus = stock_disponible − (mois_restants × cmm).
+        quantite_max_allouable = surplus uniquement. Ne JAMAIS utiliser stock_disponible entier.
+        La fraction (mois_restants × cmm) reste à la source pour sa propre consommation avant péremption.
+        Ne pas compromettre la couverture consommation de la source.
         Cette condition s'applique également aux sources issues de sites TENSION à double rôle.
-        Le surplus redistribuable est calculé identiquement.
      Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
 R2 — ÉLIGIBILITÉ CIBLE : utiliser uniquement les sites de cibles.
