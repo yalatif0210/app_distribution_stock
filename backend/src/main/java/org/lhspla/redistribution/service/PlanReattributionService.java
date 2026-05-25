@@ -50,6 +50,12 @@ public class PlanReattributionService {
         Region region = regionRepo.findById(req.getRegionId())
                 .orElseThrow(() -> BusinessException.notFound("Région", req.getRegionId()));
 
+        if (planRepo.existsPlanActifFor(req.getPeriodeId(), req.getProgrammeId(), req.getRegionId())) {
+            throw BusinessException.badRequest(
+                "Un plan validé ou en cours d'exécution existe déjà pour cette période et ce programme. " +
+                "Clôturez-le avant d'en générer un nouveau.");
+        }
+
         final AnalyseResultatDTO analyse;
         final Programme programme;
 

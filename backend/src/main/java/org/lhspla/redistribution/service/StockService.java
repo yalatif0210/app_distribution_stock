@@ -159,6 +159,15 @@ public class StockService {
         EtatStock etat = etatStockRepo.findById(req.getEtatId())
                 .orElseThrow(() -> BusinessException.notFound("EtatStock", req.getEtatId()));
 
+        if ("GESTIONNAIRE".equals(user.getRole().getName())) {
+            Long myStructureId = user.getStructure() != null ? user.getStructure().getId() : null;
+            Long etatStructureId = etat.getStructure() != null ? etat.getStructure().getId() : null;
+            if (!java.util.Objects.equals(myStructureId, etatStructureId)) {
+                throw BusinessException.badRequest(
+                        "Accès refusé : vous ne pouvez saisir que pour votre propre structure.");
+            }
+        }
+
         if ("SUBMITTED".equals(etat.getStatut())) {
             throw BusinessException.badRequest("Cet état a été soumis — modification impossible");
         }

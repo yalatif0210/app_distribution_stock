@@ -19,6 +19,14 @@ public interface PlanReattributionRepository extends JpaRepository<PlanReattribu
     List<PlanReattribution> findByPeriodeIdAndRegionId(Long periodeId, Long regionId);
     List<PlanReattribution> findByPeriodeIdAndRegionIdAndStatutNot(Long periodeId, Long regionId, String statut);
 
+    @Query("SELECT COUNT(p) > 0 FROM PlanReattribution p " +
+           "WHERE p.periode.id = :periodeId AND p.region.id = :regionId " +
+           "AND p.statut NOT IN ('BROUILLON', 'CLOTURE') " +
+           "AND ((:programmeId IS NULL AND p.programme IS NULL) OR p.programme.id = :programmeId)")
+    boolean existsPlanActifFor(@Param("periodeId") Long periodeId,
+                               @Param("programmeId") Long programmeId,
+                               @Param("regionId") Long regionId);
+
     @Query("SELECT p FROM PlanReattribution p WHERE p.periode.annee = :annee AND p.statut <> 'BROUILLON' " +
            "AND (:regionId IS NULL OR p.region.id = :regionId) " +
            "AND (:programmeId IS NULL OR p.programme.id = :programmeId)")

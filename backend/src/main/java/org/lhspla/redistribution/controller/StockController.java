@@ -43,7 +43,19 @@ public class StockController {
     public ResponseEntity<EtatStockDTO> getEtat(
             @RequestParam Long periodeId,
             @RequestParam Long programmeId,
-            @RequestParam Long structureId) {
+            @RequestParam Long structureId,
+            @AuthenticationPrincipal UserDetails user) {
+        if (user != null) {
+            Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+            if ("GESTIONNAIRE".equals(u.getRole().getName())) {
+                Long myStructureId = u.getStructure() != null ? u.getStructure().getId() : null;
+                if (!structureId.equals(myStructureId)) {
+                    throw new org.springframework.security.access.AccessDeniedException(
+                            "Accès refusé : vous ne pouvez consulter que l'état de stock de votre propre structure.");
+                }
+            }
+        }
         return ResponseEntity.ok(stockService.getEtat(periodeId, programmeId, structureId));
     }
 
@@ -54,6 +66,13 @@ public class StockController {
             @RequestParam Long programmeId,
             @RequestParam Long structureId,
             @AuthenticationPrincipal UserDetails user) {
+        Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        Long myStructureId = u.getStructure() != null ? u.getStructure().getId() : null;
+        if (!structureId.equals(myStructureId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Accès refusé : vous ne pouvez initialiser que l'état de stock de votre propre structure.");
+        }
         return ResponseEntity.ok(stockService.getOrCreateEtat(periodeId, programmeId, structureId, user.getUsername()));
     }
 
