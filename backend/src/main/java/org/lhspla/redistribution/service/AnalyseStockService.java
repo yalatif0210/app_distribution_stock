@@ -76,6 +76,10 @@ public class AnalyseStockService {
             List<AnalyseResultatDTO.StructureAnalyseDTO> enTension = new ArrayList<>();
             List<AnalyseResultatDTO.StructureAnalyseDTO> enSurstock = new ArrayList<>();
 
+            // Pour le diagnostic : sites BIEN_STOCKE/SURVEILLER non éligibles et raison
+            long nbExclusSansDate = 0;
+            long nbExclusMsdOk    = 0;
+
             for (SaisieStock saisie : entry.getValue()) {
                 String statut = calculerStatut(saisie);
                 AnalyseResultatDTO.StructureAnalyseDTO structDTO = toStructureAnalyseDTO(saisie, statut);
@@ -87,7 +91,13 @@ public class AnalyseStockService {
                     case "STOCK_DORMANT" -> enSurstock.add(structDTO);
                     // Condition B : BIEN_STOCKE/SURVEILLER avec risque de péremption → source éligible
                     case "BIEN_STOCKE", "SURVEILLER" -> {
-                        if (hasRisquePeremption(saisie)) enSurstock.add(structDTO);
+                        if (hasRisquePeremption(saisie)) {
+                            enSurstock.add(structDTO);
+                        } else if (saisie.getExpireDate() == null) {
+                            nbExclusSansDate++;
+                        } else {
+                            nbExclusMsdOk++;
+                        }
                     }
                 }
             }
@@ -108,6 +118,9 @@ public class AnalyseStockService {
 
             if (enSurstock.isEmpty()) {
                 produitDTO.setPotentielRedistribution("AUCUN_SURSTOCK");
+                produitDTO.setDiagnostiqueSource(construireDiagnostique(
+                        entry.getValue().size(), nbExclusSansDate, nbExclusMsdOk,
+                        enRupture.size(), enTension.size()));
             } else if (totalExcedent.compareTo(totalBesoin) >= 0) {
                 produitDTO.setPotentielRedistribution("POSSIBLE");
             } else {
@@ -140,6 +153,26 @@ public class AnalyseStockService {
         if (msd.compareTo(BigDecimal.valueOf(seuilSurveiller)) < 0) return "SURVEILLER";
         if (msd.compareTo(BigDecimal.valueOf(seuilSurstock)) <= 0) return "BIEN_STOCKE";
         return "SURSTOCK";
+    }
+
+    private String construireDiagnostique(int total, long sansDate, long msdOk, int ruptures, int tensions) {
+        if (total == 0) return "Aucune saisie soumise pour ce produit dans la région.";
+        StringBuilder sb = new StringBuilder();
+        sb.append(total).append(" saisie(s) analysée(s) — ");
+        if (ruptures + tensions == total) {
+            sb.append("toutes en RUPTURE/TENSION (cibles uniquement, aucune source disponible).");
+            return sb.toString();
+        }
+        sb.append(ruptures + tensions).append(" cible(s), ");
+        long autresSource = total - ruptures - tensions;
+        sb.append(autresSource).append(" site(s) avec stock :");
+        if (sansDate > 0) sb.append(" ").append(sansDate)
+                .append(" BIEN_STOCKE/SURVEILLER exclus (date de péremption non renseignée dans la saisie) ;");
+        if (msdOk > 0) sb.append(" ").append(msdOk)
+                .append(" BIEN_STOCKE/SURVEILLER exclus (MSD ≤ mois restants — pas de surplus voué à périmer) ;");
+        long restants = autresSource - sansDate - msdOk;
+        if (restants > 0) sb.append(" ").append(restants).append(" autre(s) statut non éligible(s) ;");
+        return sb.toString().replaceAll(";$", ".");
     }
 
     private boolean hasRisquePeremption(SaisieStock saisie) {

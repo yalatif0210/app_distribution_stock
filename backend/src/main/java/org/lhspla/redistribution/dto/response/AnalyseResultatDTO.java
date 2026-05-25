@@ -26,6 +26,9 @@ public class AnalyseResultatDTO {
         private List<StructureAnalyseDTO> structuresEnTension;
         private List<StructureAnalyseDTO> structuresEnSurstock;
         private String potentielRedistribution;
+        /** Explication lisible des raisons pour lesquelles aucune source n'a été trouvée.
+         *  Null si des sources existent. Utile pour diagnostiquer les cas "AUCUN_SURSTOCK". */
+        private String diagnostiqueSource;
     }
 
     @Data
