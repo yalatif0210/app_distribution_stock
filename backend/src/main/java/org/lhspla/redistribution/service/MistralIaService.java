@@ -149,9 +149,10 @@ sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'é
   Un site peut figurer dans les deux listes simultanément si le backend détecte un risque de
   péremption sur un site classifié TENSION. Dans ce cas, son rôle source est limité à son
   surplus calculé — il reste cible pour le reste de son besoin.
-  Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT),
+  Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT|BIEN_STOCKE|SURVEILLER),
            stock_disponible (net, allocations déjà déduites), cmm, msd,
            date_peremption, excedent.
+  statut = BIEN_STOCKE ou SURVEILLER → Condition B obligatoirement ; Condition A ne s'applique pas.
   Si cette liste est vide → aucune redistribution possible pour ce produit → avertissements.
 
 cibles — sites RUPTURE ou TENSION qui ont besoin de ce produit.

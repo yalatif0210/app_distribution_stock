@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -83,6 +85,10 @@ public class AnalyseStockService {
                     case "TENSION"       -> enTension.add(structDTO);
                     case "SURSTOCK"      -> enSurstock.add(structDTO);
                     case "STOCK_DORMANT" -> enSurstock.add(structDTO);
+                    // Condition B : BIEN_STOCKE/SURVEILLER avec risque de péremption → source éligible
+                    case "BIEN_STOCKE", "SURVEILLER" -> {
+                        if (hasRisquePeremption(saisie)) enSurstock.add(structDTO);
+                    }
                 }
             }
 
@@ -134,6 +140,13 @@ public class AnalyseStockService {
         if (msd.compareTo(BigDecimal.valueOf(seuilSurveiller)) < 0) return "SURVEILLER";
         if (msd.compareTo(BigDecimal.valueOf(seuilSurstock)) <= 0) return "BIEN_STOCKE";
         return "SURSTOCK";
+    }
+
+    private boolean hasRisquePeremption(SaisieStock saisie) {
+        if (saisie.getCmm() == null || saisie.getCmm().compareTo(BigDecimal.ZERO) <= 0) return false;
+        if (saisie.getExpireDate() == null || saisie.getMsd() == null) return false;
+        double moisRestants = ChronoUnit.DAYS.between(LocalDate.now(), saisie.getExpireDate()) / 30.0;
+        return moisRestants > 0 && saisie.getMsd().doubleValue() > moisRestants;
     }
 
     public BigDecimal calculerExcedent(SaisieStock saisie) {
