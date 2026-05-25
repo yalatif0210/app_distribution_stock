@@ -218,10 +218,11 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'al
 
      Capacité d'absorption d'une cible pour ce lot :
        capacite_cible = cible_cmm × mois_restants_avant_peremption_source
-     cible_cmm est le champ cmm fourni dans la liste cibles pour ce site précis.
-     Ne jamais estimer, approcher ni substituer une autre valeur de cmm — utiliser exclusivement
-     la valeur fournie dans les données. Confondre la cmm de la source avec celle de la cible
-     est une erreur grave qui fausse tous les calculs d'allocation.
+     cible_cmm est EXCLUSIVEMENT le champ "cmm" lu dans la liste cibles pour ce site précis.
+     Interdiction absolue : ne jamais calculer ou estimer la cmm à partir d'autres champs
+     (besoin, stock_disponible, msd, ou toute autre valeur). La cmm est un champ fourni — pas
+     un résultat à calculer. Confondre la cmm de la source (cmm=0 pour STOCK_DORMANT) avec
+     celle de la cible est une erreur grave qui fausse tous les calculs d'allocation.
      Ne pas allouer à une cible plus que sa capacite_cible.
 
      Répartition :
@@ -229,14 +230,23 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'al
        b) Si capacite_totale_cibles < stock_disponible : allouer jusqu'à saturation de chaque cible ;
           émettre un avertissement pour le solde non distribuable (stock restant voué à périmer à la source).
 
+     Traçabilité : inclure dans le motif de chaque mouvement issu d'une source STOCK_DORMANT :
+       "cible_cmm={valeur lue dans les données}, capacite_cible={valeur calculée}"
+     Cela permet de vérifier que la bonne valeur de cmm a été utilisée.
+
      Ne jamais allouer une fraction symbolique.
      Un stock STOCK_DORMANT non alloué en présence d'au moins une cible valide
      (RUPTURE ou TENSION) alors que capacite_cible > 0 est un résultat incorrect.
 
 R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
      Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
-     Exception : ne s'applique PAS aux sources STOCK_DORMANT (cmm = 0 → aucune consommation
-     propre à protéger). Pour STOCK_DORMANT, tout le stock est redistribuable — voir R6.
+     Exception 1 : ne s'applique PAS aux sources STOCK_DORMANT (cmm = 0 → voir R6).
+     Exception 2 : pour une source éligible via Condition B (BIEN_STOCKE, SURVEILLER),
+       R7 ne s'applique pas au-delà de la fraction de consommation avant péremption.
+       La source conserve uniquement : mois_restants × cmm (sa consommation propre avant expiry).
+       Le reste (surplus = stock_disponible − mois_restants × cmm) est entièrement redistribuable,
+       même si cela amène le stock résiduel en dessous du seuil MSD habituel.
+       Justification : le lot expire de toute façon — le seuil MSD ne peut pas être maintenu.
      On redistribue un excédent — on ne crée pas un nouveau problème.
 
 R8 — PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour couvrir toutes les cibles,
