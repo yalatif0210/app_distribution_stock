@@ -111,14 +111,14 @@ public class MistralIaService {
 
     private String construirePrompt(AnalyseResultatDTO analyse, double seuilStockSecuriteMsd) {
         try {
-            List<Map<String, Object>> stocks = buildStockList(analyse);
+            List<Map<String, Object>> produits = buildProduitsParRole(analyse);
             Map<String, Object> input = new LinkedHashMap<>();
             input.put("date_du_jour",            LocalDate.now().toString());
             input.put("periode",                  analyse.getPeriodeLibelle());
             input.put("programme",                analyse.getProgrammeNom());
             input.put("region",                   analyse.getRegionNom());
             input.put("seuil_stock_securite_msd", seuilStockSecuriteMsd);
-            input.put("stocks",                   stocks);
+            input.put("produits",                 produits);
             String inputJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(input);
 
             return """
@@ -126,53 +126,77 @@ Tu es un moteur de décision logistique pour un système de gestion de stock pha
  dans un réseau de structures sanitaires. Ton objectif est de produire un plan de\
  redistribution optimal qui réduit les risques de rupture et de péremption à l'échelle du réseau.
 
-## Données d'entrée
+## Principe directeur
 
-Pour chaque site et produit, les champs sont :
-- site_id / site_nom : identifiant et nom du site
-- produit_id / produit_nom / produit_unite
-- stock_saisi : quantité physique constatée
-- cmm : consommation mensuelle moyenne
-- msd : mois de stock disponible
-- date_peremption : date de péremption du lot (null si inconnue)
-- allocations_existantes : quantité déjà planifiée depuis ce site pour ce produit
-- stock_disponible = stock_saisi − allocations_existantes  ← toujours utiliser cette valeur
-- statut : RUPTURE | TENSION | SURVEILLER | BIEN_STOCKE | SURSTOCK | STOCK_DORMANT
-- excedent : quantité disponible à la redistribution côté source (au-delà de son seuil de sécurité)
-- besoin : estimation indicative côté destinataire — informatif uniquement, NE plafonne PAS la quantité allouée
+"Soulager les plus faibles sans léser les plus forts."
+Côté source : après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
+Côté cible : prioriser les sites les plus en tension (rupture imminente, ratio stock/MSD le plus faible).
+
+## Structure des données
+
+Les données sont organisées par produit. Chaque produit contient deux listes pré-classifiées
+par le système — ne jamais intervertir les rôles :
+
+sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'éligibilité :
+  • Condition A (surstock / stock dormant) : statut = SURSTOCK ou STOCK_DORMANT.
+  • Condition B (risque de péremption) : msd > mois_restants avant date_peremption.
+    Surplus redistribuable = stock_disponible − (mois_restants × cmm).
+    Ne redistribuer que l'excédent que le site ne peut pas consommer avant péremption.
+  Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT),
+           stock_disponible (net, allocations déjà déduites), cmm, msd,
+           date_peremption, excedent.
+  Si cette liste est vide → aucune redistribution possible pour ce produit → avertissements.
+
+cibles — sites RUPTURE ou TENSION qui ont besoin de ce produit.
+  Champs : site_id, site_nom, statut (RUPTURE|TENSION),
+           stock_disponible, cmm, msd, date_peremption,
+           besoin (indicateur de priorisation — ne plafonne pas l'allocation).
 
 %s
 
 ## Règles — non négociables
 
-R1 — SOURCE : un site est éligible comme source si :
-     a) statut = SURSTOCK : son MSD après allocation doit rester ≥ seuil_stock_securite_msd (%.1f).
-        MSD résiduelle = (stock_disponible − quantite_allouee) / cmm
-     b) statut = STOCK_DORMANT : TOUT le stock est disponible à la redistribution.
-        Aucun seuil MSD ne s'applique (cmm = 0, MSD non calculable).
-        quantite_allouee ≤ stock_disponible (règle R3 toujours applicable).
-     → La contrainte unique sur la quantité allouée est que la SOURCE ne descende pas sous son seuil.
-       Le champ besoin du destinataire est un guide, pas un plafond.
+R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles.
+     a) statut = SURSTOCK : MSD résiduelle = (stock_disponible − quantite_allouee) / cmm
+        doit rester ≥ seuil_stock_securite_msd (%.1f) après allocation.
+        quantite_max_allouable = stock_disponible − (cmm × seuil_stock_securite_msd).
+     b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable (cmm = 0).
+     c) Risque de péremption (msd > mois_restants) :
+        mois_restants = (date_peremption − date_du_jour) en mois.
+        quantite_redistribuable = stock_disponible − (mois_restants × cmm).
+        Ne jamais dépasser ce surplus — ne pas compromettre la couverture consommation de la source.
+     Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
-R2 — CIBLE : un site n'est éligible comme cible que si statut = RUPTURE ou TENSION.
+R2 — ÉLIGIBILITÉ CIBLE : utiliser uniquement les sites de cibles.
+     Ne jamais utiliser un site de cibles comme source, même si son stock_disponible > 0.
+     besoin est un indicateur de priorisation, pas un plafond : une cible peut recevoir plus
+     que son besoin calculé si le stock redistribuable le permet.
 
-R3 — PLAFOND : quantite_allouee ≤ stock_disponible de la source.
-     Si plusieurs lignes partagent la même source et le même produit, leurs quantités
-     cumulées ne doivent pas dépasser stock_disponible. Recalculer dynamiquement.
+R3 — PLAFOND SOURCE : la somme des quantite_allouee depuis une même source pour un même produit
+     ne doit pas dépasser son stock redistribuable (calculé selon R1a, R1b ou R1c).
+     Recalculer dynamiquement après chaque allocation.
 
-R4 — FEFO : si date_peremption est renseignée, sélectionner en priorité le lot dont
-     la date de péremption est la plus proche (First Expired, First Out).
+R4 — FEFO : reporter la date_peremption de la source (lot à péremption la plus proche).
+     Ne jamais inventer ni calculer cette date.
 
-R5 — DATE PÉREMPTION : reporter dans chaque ligne la date_peremption du lot source
-     sélectionné. Ne jamais inventer, estimer ou calculer cette date.
+R5 — BESOIN NON BLOQUANT : besoin est un indicateur de priorisation.
+     Ne pas limiter quantite_allouee au besoin calculé de la cible, ni au stock existant de la cible.
+     Ne jamais bloquer ni écrêter une allocation au motif que la cible aurait atteint son besoin.
+     Allouer le maximum autorisé par R1 et R3.
 
-R6 — INUTILE : ne pas générer de ligne si quantite_allouee = 0 ou si la cible
-     n'est pas en tension/rupture.
+R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, allouer l'intégralité du
+     stock_disponible. Si plusieurs cibles, répartir proportionnellement à leur besoin.
+     Ne jamais allouer une fraction symbolique.
 
-R7 — BESOIN NON BLOQUANT : "besoin insuffisant" n'est JAMAIS un motif de refus.
-     Si stock_disponible > 0 et que R1/R3 le permettent, allouer ce qui est disponible
-     même si quantite_allouee < besoin. Mentionner la couverture partielle dans motif.
-     Seules R1 (MSD source) et R3 (plafond stock) peuvent bloquer une allocation.
+R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
+     Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
+     On redistribue un excédent — on ne crée pas un nouveau problème.
+
+R8 — PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour couvrir toutes les cibles,
+     allouer en priorité au site présentant le ratio stock/MSD le plus faible (plus critique).
+     Traiter les RUPTURE avant les TENSION à ratio égal.
+
+R9 — INUTILE : ne générer aucune ligne si quantite_allouee = 0.
 
 ## Format de sortie — JSON strict, sans aucun texte avant ou après
 
@@ -189,10 +213,10 @@ R7 — BESOIN NON BLOQUANT : "besoin insuffisant" n'est JAMAIS un motif de refus
       "cible_nom": "<string>",
       "quantite_allouee": <number>,
       "date_peremption": "<YYYY-MM-DD ou null>",
-      "motif": "<tension/rupture détectée, excédent source, risque péremption>"
+      "motif": "<raison : rupture/tension cible, surstock/stock dormant/risque péremption source>"
     }
   ],
-  "avertissements": ["<message si données insuffisantes, règle non applicable ou produit exclu>"]
+  "avertissements": ["<produit sans source éligible ou autre impossibilité>"]
 }
 
 Si aucune redistribution n'est possible, retourner mouvements = [] et expliquer dans avertissements.
@@ -203,38 +227,69 @@ Si aucune redistribution n'est possible, retourner mouvements = [] et expliquer 
         }
     }
 
-    private List<Map<String, Object>> buildStockList(AnalyseResultatDTO analyse) {
-        List<Map<String, Object>> stocks = new ArrayList<>();
-        if (analyse.getProduits() == null) return stocks;
+    private List<Map<String, Object>> buildProduitsParRole(AnalyseResultatDTO analyse) {
+        List<Map<String, Object>> produits = new ArrayList<>();
+        if (analyse.getProduits() == null) return produits;
 
         for (AnalyseResultatDTO.AnalyseProduitDTO produit : analyse.getProduits()) {
-            List<AnalyseResultatDTO.StructureAnalyseDTO> toutes = new ArrayList<>();
-            if (produit.getStructuresEnRupture()  != null) toutes.addAll(produit.getStructuresEnRupture());
-            if (produit.getStructuresEnTension()   != null) toutes.addAll(produit.getStructuresEnTension());
-            if (produit.getStructuresEnSurstock()  != null) toutes.addAll(produit.getStructuresEnSurstock());
+            boolean hasCible = (produit.getStructuresEnRupture() != null && !produit.getStructuresEnRupture().isEmpty())
+                            || (produit.getStructuresEnTension()  != null && !produit.getStructuresEnTension().isEmpty());
+            if (!hasCible) continue;
 
-            for (AnalyseResultatDTO.StructureAnalyseDTO s : toutes) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("site_id",                s.getStructureId());
-                entry.put("site_nom",               s.getStructureNom());
-                entry.put("produit_id",              produit.getProduitId());
-                entry.put("produit_nom",             produit.getProduitNom());
-                entry.put("produit_unite",           produit.getProduitUnite());
-                entry.put("stock_saisi",             s.getStockDisponible());
-                entry.put("cmm",                     s.getCmm());
-                entry.put("msd",                     s.getMsd());
-                entry.put("date_peremption",         s.getExpireDateFefo() != null
-                                                        ? s.getExpireDateFefo().toString() : null);
-                entry.put("allocations_existantes",  s.getAllocationsExistantes());
-                entry.put("stock_disponible",        s.getStockDisponible()
-                                                        .subtract(s.getAllocationsExistantes()));
-                entry.put("statut",                  s.getStatutStock());
-                entry.put("excedent",                s.getExcedent());
-                entry.put("besoin",                  s.getBesoin());
-                stocks.add(entry);
+            List<Map<String, Object>> sources = new ArrayList<>();
+            if (produit.getStructuresEnSurstock() != null) {
+                for (AnalyseResultatDTO.StructureAnalyseDTO s : produit.getStructuresEnSurstock()) {
+                    sources.add(buildSiteSource(s));
+                }
             }
+
+            List<Map<String, Object>> cibles = new ArrayList<>();
+            if (produit.getStructuresEnRupture() != null) {
+                for (AnalyseResultatDTO.StructureAnalyseDTO s : produit.getStructuresEnRupture()) {
+                    cibles.add(buildSiteCible(s));
+                }
+            }
+            if (produit.getStructuresEnTension() != null) {
+                for (AnalyseResultatDTO.StructureAnalyseDTO s : produit.getStructuresEnTension()) {
+                    cibles.add(buildSiteCible(s));
+                }
+            }
+
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("produit_id",        produit.getProduitId());
+            entry.put("produit_nom",       produit.getProduitNom());
+            entry.put("produit_unite",     produit.getProduitUnite());
+            entry.put("sources_eligibles", sources);
+            entry.put("cibles",            cibles);
+            produits.add(entry);
         }
-        return stocks;
+        return produits;
+    }
+
+    private Map<String, Object> buildSiteSource(AnalyseResultatDTO.StructureAnalyseDTO s) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("site_id",       s.getStructureId());
+        m.put("site_nom",      s.getStructureNom());
+        m.put("statut",        s.getStatutStock());
+        m.put("stock_disponible", s.getStockDisponible().subtract(s.getAllocationsExistantes()));
+        m.put("cmm",           s.getCmm());
+        m.put("msd",           s.getMsd());
+        m.put("date_peremption", s.getExpireDateFefo() != null ? s.getExpireDateFefo().toString() : null);
+        m.put("excedent",      s.getExcedent());
+        return m;
+    }
+
+    private Map<String, Object> buildSiteCible(AnalyseResultatDTO.StructureAnalyseDTO s) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("site_id",       s.getStructureId());
+        m.put("site_nom",      s.getStructureNom());
+        m.put("statut",        s.getStatutStock());
+        m.put("stock_disponible", s.getStockDisponible().subtract(s.getAllocationsExistantes()));
+        m.put("cmm",           s.getCmm());
+        m.put("msd",           s.getMsd());
+        m.put("date_peremption", s.getExpireDateFefo() != null ? s.getExpireDateFefo().toString() : null);
+        m.put("besoin",        s.getBesoin());
+        return m;
     }
 
     // ── Helpers de conversion ────────────────────────────────────────────────────

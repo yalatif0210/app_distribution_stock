@@ -299,9 +299,9 @@ class MistralIaServiceTest {
 
         assertThat(prompt)
                 .as("Le prompt doit indiquer que besoin ne plafonne pas l'allocation")
-                .contains("NE plafonne PAS")
                 .contains("BESOIN NON BLOQUANT")
-                .contains("JAMAIS un motif de refus");
+                .contains("Ne pas limiter quantite_allouee au besoin")
+                .contains("Allouer le maximum autorisé");
     }
 
     @Test
@@ -320,7 +320,45 @@ class MistralIaServiceTest {
                 .as("Le prompt doit définir la contrainte MSD résiduelle pour la source")
                 .contains("MSD résiduelle")
                 .contains("seuil_stock_securite_msd")
-                .contains("La contrainte unique sur la quantité allouée est que la SOURCE");
+                .contains("utiliser uniquement les sites de sources_eligibles");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void prompt_interdit_rupture_tension_comme_source() {
+        preparerReponseApiMistral("{\"resume\":\"\",\"mouvements\":[],\"avertissements\":[]}");
+
+        service.genererPlan(analyseFactice(), 2.0);
+
+        verify(restTemplate).postForEntity(anyString(), requestCaptor.capture(), eq(Map.class));
+        Map<String, Object> body = (Map<String, Object>) requestCaptor.getValue().getBody();
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) body.get("messages");
+        String prompt = (String) messages.get(0).get("content");
+
+        assertThat(prompt)
+                .as("Le prompt doit interdire l'utilisation de cibles comme source")
+                .contains("sources_eligibles")
+                .contains("Ne jamais utiliser un site de cibles comme source")
+                .contains("utiliser uniquement les sites de cibles");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void prompt_contient_regle_maximiser_stock_dormant() {
+        preparerReponseApiMistral("{\"resume\":\"\",\"mouvements\":[],\"avertissements\":[]}");
+
+        service.genererPlan(analyseFactice(), 2.0);
+
+        verify(restTemplate).postForEntity(anyString(), requestCaptor.capture(), eq(Map.class));
+        Map<String, Object> body = (Map<String, Object>) requestCaptor.getValue().getBody();
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) body.get("messages");
+        String prompt = (String) messages.get(0).get("content");
+
+        assertThat(prompt)
+                .as("Le prompt doit demander de maximiser l'allocation depuis un stock dormant")
+                .contains("MAXIMISER STOCK_DORMANT")
+                .contains("intégralité")
+                .contains("Ne jamais allouer une fraction symbolique");
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────

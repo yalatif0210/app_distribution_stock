@@ -28,6 +28,14 @@ public interface EtatStockRepository extends JpaRepository<EtatStock, Long> {
             @Param("regionId") Long regionId,
             @Param("statut") String statut);
 
+    List<EtatStock> findByPeriodeIdAndStructureId(Long periodeId, Long structureId);
+
+    @Query("SELECT e FROM EtatStock e WHERE e.periode.id = :periodeId AND e.structure.id = :structureId AND e.programme.id = :programmeId")
+    List<EtatStock> findByPeriodeAndStructureAndProgramme(
+            @Param("periodeId") Long periodeId,
+            @Param("structureId") Long structureId,
+            @Param("programmeId") Long programmeId);
+
     List<EtatStock> findByPeriodeId(Long periodeId);
 
     @Query("SELECT e FROM EtatStock e WHERE e.periode.id = :periodeId AND e.programme.id = :programmeId")

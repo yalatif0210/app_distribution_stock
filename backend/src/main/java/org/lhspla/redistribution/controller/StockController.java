@@ -10,6 +10,7 @@ import org.lhspla.redistribution.dto.response.EtatStockSummaryDTO;
 import org.lhspla.redistribution.dto.response.ImportResultatDTO;
 import org.lhspla.redistribution.dto.response.LigneSaisieDTO;
 import org.lhspla.redistribution.dto.response.SaisieStockDTO;
+import org.lhspla.redistribution.entity.Utilisateur;
 import org.lhspla.redistribution.repository.UtilisateurRepository;
 import org.lhspla.redistribution.service.AnalyseStockService;
 import org.lhspla.redistribution.service.ImportExcelService;
@@ -153,8 +154,29 @@ public class StockController {
             @RequestParam(required = false) Long programmeId,
             @RequestParam(required = false) Long regionId,
             @AuthenticationPrincipal UserDetails user) {
-        Long resolvedRegionId = resolveRegionIdForEtats(regionId, user.getUsername());
-        return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, resolvedRegionId));
+        Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        String role = u.getRole().getName();
+
+        if ("GESTIONNAIRE".equals(role)) {
+            // Un gestionnaire ne voit que ses propres états
+            Long structureId = u.getStructure() != null ? u.getStructure().getId() : null;
+            return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, null, structureId));
+        }
+
+        // PHARMACIEN_REGION, SUPERVISEUR, ADMIN : filtrage par région ou tout voir
+        Long resolvedRegionId;
+        if (regionId != null) {
+            resolvedRegionId = regionId;
+        } else if (u.getRegion() != null) {
+            resolvedRegionId = u.getRegion().getId();
+        } else if (u.getStructure() != null && u.getStructure().getDistrict() != null
+                && u.getStructure().getDistrict().getRegion() != null) {
+            resolvedRegionId = u.getStructure().getDistrict().getRegion().getId();
+        } else {
+            resolvedRegionId = null; // ADMIN → toutes les régions
+        }
+        return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, resolvedRegionId, null));
     }
 
     @DeleteMapping("/etat/{etatId}")
@@ -164,19 +186,5 @@ public class StockController {
             @AuthenticationPrincipal UserDetails user) {
         stockService.deleteEtat(etatId, user.getUsername());
         return ResponseEntity.noContent().build();
-    }
-
-    private Long resolveRegionIdForEtats(Long provided, String username) {
-        if (provided != null) return provided;
-        return utilisateurRepository.findByUsername(username)
-            .map(u -> {
-                if (u.getRegion() != null) return u.getRegion().getId();
-                if (u.getStructure() != null && u.getStructure().getDistrict() != null
-                        && u.getStructure().getDistrict().getRegion() != null)
-                    return u.getStructure().getDistrict().getRegion().getId();
-                // ADMIN ou SUPERVISEUR multi-régions → null = toutes les régions
-                return null;
-            })
-            .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
     }
 }

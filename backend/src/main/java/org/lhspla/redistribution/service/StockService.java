@@ -387,9 +387,14 @@ public class StockService {
     }
 
     @Transactional(readOnly = true)
-    public List<EtatStockSummaryDTO> listEtats(Long periodeId, Long programmeId, Long regionId) {
+    public List<EtatStockSummaryDTO> listEtats(Long periodeId, Long programmeId, Long regionId, Long structureId) {
         List<EtatStock> etats;
-        if (regionId != null && programmeId != null) {
+        if (structureId != null) {
+            // GESTIONNAIRE : uniquement ses propres états
+            etats = programmeId != null
+                ? etatStockRepo.findByPeriodeAndStructureAndProgramme(periodeId, structureId, programmeId)
+                : etatStockRepo.findByPeriodeIdAndStructureId(periodeId, structureId);
+        } else if (regionId != null && programmeId != null) {
             etats = etatStockRepo.findByPeriodeAndProgrammeAndRegion(periodeId, programmeId, regionId);
         } else if (regionId != null) {
             etats = etatStockRepo.findByPeriodeId(periodeId).stream()
