@@ -235,10 +235,21 @@ public class StockService {
     // ─── Lecture (tableau de bord, analyse) ──────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<SaisieStockDTO> findSaisies(Long periodeId, Long programmeId) {
-        List<SaisieStock> list = programmeId != null
-                ? saisieStockRepo.findSubmittedByPeriodeIdAndProgrammeId(periodeId, programmeId)
-                : saisieStockRepo.findByPeriodeId(periodeId);
+    public List<SaisieStockDTO> findSaisies(Long periodeId, Long programmeId, Long structureId) {
+        List<SaisieStock> list;
+        if (structureId != null) {
+            list = saisieStockRepo.findByStructureIdAndPeriodeId(structureId, periodeId);
+            if (programmeId != null) {
+                final Long progId = programmeId;
+                list = list.stream()
+                        .filter(s -> s.getProduit().getProgramme().getId().equals(progId))
+                        .toList();
+            }
+        } else {
+            list = programmeId != null
+                    ? saisieStockRepo.findSubmittedByPeriodeIdAndProgrammeId(periodeId, programmeId)
+                    : saisieStockRepo.findByPeriodeId(periodeId);
+        }
         return list.stream().map(this::toDTO).toList();
     }
 

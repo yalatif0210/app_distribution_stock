@@ -105,8 +105,17 @@ public class StockController {
     @GetMapping
     public ResponseEntity<List<SaisieStockDTO>> getSaisies(
             @RequestParam Long periodeId,
-            @RequestParam(required = false) Long programmeId) {
-        return ResponseEntity.ok(stockService.findSaisies(periodeId, programmeId));
+            @RequestParam(required = false) Long programmeId,
+            @AuthenticationPrincipal UserDetails user) {
+        Long structureId = null;
+        if (user != null) {
+            Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+            if ("GESTIONNAIRE".equals(u.getRole().getName())) {
+                structureId = u.getStructure() != null ? u.getStructure().getId() : null;
+            }
+        }
+        return ResponseEntity.ok(stockService.findSaisies(periodeId, programmeId, structureId));
     }
 
     @GetMapping("/{id}")
