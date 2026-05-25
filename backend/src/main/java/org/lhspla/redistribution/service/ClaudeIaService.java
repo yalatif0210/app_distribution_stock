@@ -203,11 +203,22 @@ R5 — BESOIN NON BLOQUANT : besoin est un indicateur de priorisation.
      Invoquer le besoin comme motif de non-allocation est une violation de cette règle.
      Si une source éligible existe et qu'une cible valide existe, une allocation doit être générée.
 
-R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, allouer l'intégralité du
-     stock_disponible. Si plusieurs cibles, répartir proportionnellement à leur besoin.
+R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'allocation
+     dans la limite de la capacité d'absorption de chaque cible avant la date de péremption.
+     Ne jamais transférer le risque de péremption de la source vers la cible.
+
+     Capacité d'absorption d'une cible pour ce lot :
+       capacite_cible = cible_cmm × mois_restants_avant_peremption_source
+     Ne pas allouer à une cible plus que sa capacite_cible.
+
+     Répartition :
+       a) Si capacite_totale_cibles ≥ stock_disponible : allouer intégralement, proportionnel à capacite_cible.
+       b) Si capacite_totale_cibles < stock_disponible : allouer jusqu'à saturation de chaque cible ;
+          émettre un avertissement pour le solde non distribuable (stock restant voué à périmer à la source).
+
      Ne jamais allouer une fraction symbolique.
      Un stock STOCK_DORMANT non alloué en présence d'au moins une cible valide
-     (RUPTURE ou TENSION) est un résultat incorrect.
+     (RUPTURE ou TENSION) alors que capacite_cible > 0 est un résultat incorrect.
 
 R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
      Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.

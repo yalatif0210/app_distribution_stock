@@ -357,7 +357,7 @@ class MistralIaServiceTest {
         assertThat(prompt)
                 .as("Le prompt doit demander de maximiser l'allocation depuis un stock dormant")
                 .contains("MAXIMISER STOCK_DORMANT")
-                .contains("intégralité")
+                .contains("capacite_cible")
                 .contains("Ne jamais allouer une fraction symbolique");
     }
 
