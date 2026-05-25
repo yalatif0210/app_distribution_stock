@@ -1,0 +1,1 @@
+ALTER TABLE lignes_plan ADD COLUMN IF NOT EXISTS expire_date DATE;

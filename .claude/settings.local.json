@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\config\")",
+      "Bash(mkdir -p \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\entity\")",
+      "Bash(mkdir -p \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\repository\")",
+      "Bash(mkdir -p \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\service\")",
+      "Bash(mkdir -p \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\controller\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(ConvertTo-Json -Depth 100)",
+      "Bash(npx ng *)",
+      "Bash(npm install *)",
+      "Bash(docker compose *)",
+      "PowerShell(New-Item *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\" -Recurse -Directory)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\" -Recurse -Directory | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\controller\" -File | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\service\" -File | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\entity\" -File | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\backend\\\\src\\\\main\\\\java\\\\org\\\\lhspla\\\\redistribution\\\\dto\" -Recurse -File | ForEach-Object { $_.FullName })",
+      "WebSearch",
+      "Bash(mvn test *)",
+      "Bash(mvn clean *)",
+      "Bash(npm test *)",
+      "Bash(python generate_plan_formation.py)",
+      "Bash(dir \"C:\\\\DEV_APP_LAB\\\\PROJECT_LAB\\\\Weekly_report_v2\\\\Plan_Formation_Redistribution.docx\")"
+    ]
+  }
+}

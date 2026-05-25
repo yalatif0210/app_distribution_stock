@@ -1,0 +1,1 @@
+ALTER TABLE programmes ALTER COLUMN code TYPE VARCHAR(50);
