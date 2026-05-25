@@ -9,7 +9,9 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
@@ -144,6 +146,9 @@ sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'é
     Ne redistribuer que l'excédent que le site ne peut pas consommer avant péremption.
   ATTENTION : la date_peremption d'une source STOCK_DORMANT est une raison supplémentaire de
   redistribuer en urgence — jamais un motif de blocage. Condition B ne s'applique pas à STOCK_DORMANT.
+  Un site peut figurer dans les deux listes simultanément si le backend détecte un risque de
+  péremption sur un site classifié TENSION. Dans ce cas, son rôle source est limité à son
+  surplus calculé — il reste cible pour le reste de son besoin.
   Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT),
            stock_disponible (net, allocations déjà déduites), cmm, msd,
            date_peremption, excedent.
@@ -152,6 +157,8 @@ sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'é
 cibles — sites RUPTURE ou TENSION qui ont besoin de ce produit.
   RUPTURE et TENSION sont tous les deux des cibles valides. Une liste de cibles contenant
   uniquement des sites TENSION est tout à fait suffisante pour déclencher des allocations.
+  Un site TENSION peut aussi figurer dans sources_eligibles s'il présente un risque de péremption
+  (double rôle) — son rôle cible est indépendant et inchangé.
   Champs : site_id, site_nom, statut (RUPTURE|TENSION),
            stock_disponible, cmm, msd, date_peremption,
            besoin (indicateur de priorisation — ne plafonne pas l'allocation).
@@ -166,16 +173,20 @@ R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles
         quantite_max_allouable = stock_disponible − (cmm × seuil_stock_securite_msd).
      b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable sans exception.
         cmm = 0 → pas de seuil MSD à respecter. date_peremption → urgence de redistribuer, pas un blocage.
-     c) Risque de péremption (s'applique uniquement aux sources avec cmm > 0, statut SURSTOCK) :
+     c) Risque de péremption (s'applique uniquement aux sources avec cmm > 0) :
         mois_restants = (date_peremption − date_du_jour) en mois.
         Si msd > mois_restants : quantite_redistribuable = stock_disponible − (mois_restants × cmm).
         Ne jamais dépasser ce surplus — ne pas compromettre la couverture consommation de la source.
+        Cette condition s'applique également aux sources issues de sites TENSION à double rôle.
+        Le surplus redistribuable est calculé identiquement.
      Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
 R2 — ÉLIGIBILITÉ CIBLE : utiliser uniquement les sites de cibles.
      Ne jamais utiliser un site de cibles comme source, même si son stock_disponible > 0.
      besoin est un indicateur de priorisation, pas un plafond : une cible peut recevoir plus
      que son besoin calculé si le stock redistribuable le permet.
+     Un résultat qui n'alloue rien au motif que toutes les cibles sont en TENSION
+     (et non en RUPTURE) est un résultat incorrect.
 
 R3 — PLAFOND SOURCE : la somme des quantite_allouee depuis une même source pour un même produit
      ne doit pas dépasser son stock redistribuable (calculé selon R1a, R1b ou R1c).
@@ -188,10 +199,14 @@ R5 — BESOIN NON BLOQUANT : besoin est un indicateur de priorisation.
      Ne pas limiter quantite_allouee au besoin calculé de la cible, ni au stock existant de la cible.
      Ne jamais bloquer ni écrêter une allocation au motif que la cible aurait atteint son besoin.
      Allouer le maximum autorisé par R1 et R3.
+     Invoquer le besoin comme motif de non-allocation est une violation de cette règle.
+     Si une source éligible existe et qu'une cible valide existe, une allocation doit être générée.
 
 R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, allouer l'intégralité du
      stock_disponible. Si plusieurs cibles, répartir proportionnellement à leur besoin.
      Ne jamais allouer une fraction symbolique.
+     Un stock STOCK_DORMANT non alloué en présence d'au moins une cible valide
+     (RUPTURE ou TENSION) est un résultat incorrect.
 
 R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
      Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
@@ -204,6 +219,14 @@ R8 — PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour cou
      Traiter les RUPTURE avant les TENSION à ratio égal.
 
 R9 — INUTILE : ne générer aucune ligne si quantite_allouee = 0.
+
+R10 — DOUBLE RÔLE : un site peut être simultanément source et cible sur un même produit.
+     Condition de déclenchement : site classifié TENSION, cmm > 0, et msd > mois_restants.
+     En tant que source : son stock redistribuable est limité au surplus voué à périmer.
+       surplus = stock_disponible − (mois_restants × cmm)
+     En tant que cible : il reçoit du stock pour couvrir son propre besoin.
+     Ces deux allocations sont indépendantes et doivent toutes deux apparaître dans le plan.
+     Motif source : "Source secondaire — risque de péremption sur site en tension"
 
 ## Format de sortie — JSON strict, sans aucun texte avant ou après
 
@@ -259,6 +282,10 @@ Si aucune redistribution n'est possible, retourner mouvements = [] et expliquer 
             if (produit.getStructuresEnTension() != null) {
                 for (AnalyseResultatDTO.StructureAnalyseDTO s : produit.getStructuresEnTension()) {
                     cibles.add(buildSiteCible(s));
+                    // Double rôle : TENSION + risque péremption → aussi source pour son surplus
+                    if (hasRisquePeremption(s)) {
+                        sources.add(buildSiteSource(s));
+                    }
                 }
             }
 
@@ -271,6 +298,13 @@ Si aucune redistribution n'est possible, retourner mouvements = [] et expliquer 
             produits.add(entry);
         }
         return produits;
+    }
+
+    private boolean hasRisquePeremption(AnalyseResultatDTO.StructureAnalyseDTO s) {
+        if (s.getCmm() == null || s.getCmm().compareTo(BigDecimal.ZERO) <= 0) return false;
+        if (s.getExpireDateFefo() == null || s.getMsd() == null) return false;
+        double moisRestants = ChronoUnit.DAYS.between(LocalDate.now(), s.getExpireDateFefo()) / 30.0;
+        return moisRestants > 0 && s.getMsd().doubleValue() > moisRestants;
     }
 
     private Map<String, Object> buildSiteSource(AnalyseResultatDTO.StructureAnalyseDTO s) {
