@@ -208,6 +208,10 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'al
 
      Capacité d'absorption d'une cible pour ce lot :
        capacite_cible = cible_cmm × mois_restants_avant_peremption_source
+     cible_cmm est le champ cmm fourni dans la liste cibles pour ce site précis.
+     Ne jamais estimer, approcher ni substituer une autre valeur de cmm — utiliser exclusivement
+     la valeur fournie dans les données. Confondre la cmm de la source avec celle de la cible
+     est une erreur grave qui fausse tous les calculs d'allocation.
      Ne pas allouer à une cible plus que sa capacite_cible.
 
      Répartition :
