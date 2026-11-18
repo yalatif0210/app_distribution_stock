@@ -13,7 +13,7 @@
 
     <groupId>org.lhspla</groupId>
     <artifactId>redistribution</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>redistribution</name>
     <description>Outil de Redistribution Intelligente de Stocks Sanitaires</description>
 
