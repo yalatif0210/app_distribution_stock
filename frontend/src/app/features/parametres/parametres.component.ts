@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -11,6 +11,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ParametreService } from '../../core/services/parametre.service';
+import { SeuilsStatut, SeuilsStatutService } from '../../core/services/seuils-statut.service';
 import { ReferentielService } from '../../core/services/referentiel.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { Region } from '../../core/models/models';
@@ -26,8 +27,8 @@ import { Region } from '../../core/models/models';
   ],
   template: `
     <div class="page-header">
-      <h1>Paramètres région</h1>
-      <p>Configurez les seuils de gestion des stocks pour votre région</p>
+      <h1>Paramètres</h1>
+      <p>Configurez les seuils de gestion des stocks</p>
     </div>
 
     <div style="max-width:600px;">
@@ -45,7 +46,7 @@ import { Region } from '../../core/models/models';
         <mat-card-content style="padding-top:1.5rem;">
 
           <!-- Région selector pour admin -->
-          <mat-form-field *ngIf="auth.isAdmin() && !auth.isPharmacienRegion()" appearance="fill" style="width:100%; margin-bottom:1rem;">
+          <mat-form-field *ngIf="auth.isAdmin()" appearance="fill" style="width:100%; margin-bottom:1rem;">
             <mat-label>Région</mat-label>
             <mat-select [(ngModel)]="selectedRegionId" (ngModelChange)="onRegionChange($event)">
               <mat-option *ngFor="let r of regions" [value]="r.id">{{ r.nom }}</mat-option>
@@ -76,7 +77,7 @@ import { Region } from '../../core/models/models';
             <div style="margin-top:1rem; padding:1rem; background:#f0f4ff; border-radius:8px; font-size:.85rem; color:#3730a3;">
               <mat-icon style="font-size:1rem; vertical-align:middle;">info</mat-icon>
               Un site source doit conserver un MSD résiduel ≥ <strong>{{ editSeuil }}</strong> après allocation.
-              Toute redistribution qui ferait tomber le stock en dessous de ce seuil est refusée par l'IA.
+              Toute redistribution qui ferait tomber le stock en dessous de ce seuil est refusée par le système.
             </div>
 
             <div *ngIf="erreur" style="margin-top:1rem; color:#dc2626; font-size:.875rem;">
@@ -97,6 +98,58 @@ import { Region } from '../../core/models/models';
         </mat-card-actions>
       </mat-card>
 
+      <!-- Seuils des statuts de stock (admin) -->
+      <mat-card *ngIf="auth.isAdmin()" style="margin-top:1.5rem;">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon style="vertical-align:middle; margin-right:.5rem;">rule</mat-icon>
+            Seuils des statuts de stock
+          </mat-card-title>
+          <mat-card-subtitle>
+            Communs à toutes les régions. Ils donnent la couleur et le libellé des stocks dans les vues ;
+            ils ne décident pas quelles sources peuvent céder (c'est le seuil de sécurité ci-dessus).
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content style="padding-top:1.25rem;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;">
+            <mat-form-field appearance="fill">
+              <mat-label>Tension en dessous de</mat-label>
+              <input matInput type="number" min="0.1" step="0.5" [(ngModel)]="editStatuts.tension" [disabled]="savingStatuts">
+              <span matTextSuffix>mois</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>À surveiller en dessous de</mat-label>
+              <input matInput type="number" min="0.1" step="0.5" [(ngModel)]="editStatuts.surveiller" [disabled]="savingStatuts">
+              <span matTextSuffix>mois</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>Surstock au-delà de</mat-label>
+              <input matInput type="number" min="0.1" max="24" step="0.5" [(ngModel)]="editStatuts.surstock" [disabled]="savingStatuts">
+              <span matTextSuffix>mois</span>
+            </mat-form-field>
+          </div>
+          <div style="font-size:.82rem;color:var(--text-secondary);line-height:1.7;">
+            Rupture : MSD = 0 · Tension : MSD &lt; {{ editStatuts.tension }} ·
+            À surveiller : MSD &lt; {{ editStatuts.surveiller }} ·
+            Bien stocké : jusqu'à {{ editStatuts.surstock }} · Surstock : au-delà
+          </div>
+          <div *ngIf="!statutsValides" style="margin-top:.5rem;color:#dc2626;font-size:.85rem;">
+            Les seuils doivent respecter 0 &lt; tension &lt; à surveiller &lt; surstock ≤ 24 mois.
+          </div>
+          <div *ngIf="erreurStatuts" style="margin-top:.5rem;color:#dc2626;font-size:.85rem;">{{ erreurStatuts }}</div>
+          <div style="margin-top:.75rem;font-size:.8rem;color:#92400e;">
+            Le statut de toutes les saisies existantes, y compris des périodes passées, est recalculé à l'enregistrement.
+          </div>
+        </mat-card-content>
+        <mat-card-actions align="end" style="padding:1rem 1.5rem;">
+          <button mat-stroked-button (click)="annulerStatuts()" [disabled]="savingStatuts">Annuler</button>
+          <button mat-flat-button color="primary" (click)="sauvegarderStatuts()"
+                  [disabled]="savingStatuts || !statutsValides" style="margin-left:.75rem;">
+            <mat-icon>save</mat-icon> Enregistrer
+          </button>
+        </mat-card-actions>
+      </mat-card>
+
       <!-- Aide contextuelle -->
       <mat-card style="margin-top:1.5rem; background:#fffbeb; border:1px solid #fcd34d;">
         <mat-card-content style="padding:1rem;">
@@ -106,8 +159,9 @@ import { Region } from '../../core/models/models';
           </div>
           <ul style="margin:0; padding-left:1.25rem; font-size:.85rem; color:#78350f; line-height:1.8;">
             <li><strong>MSD (Mois de Stock Disponible)</strong> = stock disponible ÷ consommation mensuelle moyenne</li>
-            <li>Lors de la génération d'un plan par l'IA, un site en <em>surstock</em> ne peut céder des produits que si son MSD résiduel reste ≥ à ce seuil</li>
-            <li>Par exemple, avec un seuil de <strong>2 MSD</strong>, un site qui a 5 mois de stock peut en redistribuer jusqu'à 3 mois</li>
+            <li>Dans un plan, généré par l'IA ou construit à la main, tout site dont le MSD dépasse ce seuil peut servir de source, quel que soit son statut, et ne cède que ce qui dépasse le seuil</li>
+            <li>Par exemple, avec un seuil de <strong>2 MSD</strong>, un site qui a 5 mois de stock peut en redistribuer jusqu'à 3 mois, et un site qui en a 3 peut en céder 1</li>
+            <li><strong>Exception péremption</strong> : si le lot d'un site périmera avant d'être consommé, la part qui périmera peut être cédée même si le site passe sous le seuil</li>
             <li>Augmenter ce seuil protège davantage les sources mais réduit les possibilités de redistribution</li>
           </ul>
         </mat-card-content>
@@ -124,6 +178,44 @@ export class ParametresComponent implements OnInit {
   regions: Region[] = [];
   selectedRegionId: number | null = null;
 
+  // Seuils des statuts de stock (admin)
+  private seuilsStatut = inject(SeuilsStatutService);
+  editStatuts: SeuilsStatut = { ...this.seuilsStatut.seuils };
+  savingStatuts = false;
+  erreurStatuts = '';
+
+  get statutsValides(): boolean {
+    const s = this.editStatuts;
+    return [s.tension, s.surveiller, s.surstock].every(v => v !== null && v !== undefined && !isNaN(v))
+        && s.tension > 0 && s.tension < s.surveiller && s.surveiller < s.surstock && s.surstock <= 24;
+  }
+
+  chargerSeuilsStatut(): void {
+    this.seuilsStatut.charger().subscribe(s => this.editStatuts = { ...s });
+  }
+
+  annulerStatuts(): void {
+    this.editStatuts = { ...this.seuilsStatut.seuils };
+    this.erreurStatuts = '';
+  }
+
+  sauvegarderStatuts(): void {
+    if (!this.statutsValides) return;
+    this.savingStatuts = true;
+    this.erreurStatuts = '';
+    this.seuilsStatut.modifier(this.editStatuts).subscribe({
+      next: s => {
+        this.editStatuts = { ...s };
+        this.savingStatuts = false;
+        this.snackBar.open('Seuils des statuts enregistrés.', 'OK', { duration: 3000 });
+      },
+      error: err => {
+        this.erreurStatuts = err.error?.message || 'Erreur lors de la sauvegarde.';
+        this.savingStatuts = false;
+      }
+    });
+  }
+
   constructor(
     private parametreService: ParametreService,
     private referentielService: ReferentielService,
@@ -132,7 +224,8 @@ export class ParametresComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    if (this.auth.isAdmin() && !this.auth.isPharmacienRegion()) {
+    if (this.auth.isAdmin()) {
+      this.chargerSeuilsStatut();
       this.referentielService.getRegions().subscribe(regions => {
         this.regions = regions;
         if (regions.length > 0) {
@@ -174,8 +267,7 @@ export class ParametresComponent implements OnInit {
     if (this.editSeuil === null || this.editSeuil < 0.5 || this.editSeuil > 12) return;
     this.saving = true;
     this.erreur = '';
-    const regionId = this.auth.isAdmin() && !this.auth.isPharmacienRegion()
-      ? (this.selectedRegionId ?? undefined) : undefined;
+    const regionId = this.auth.isAdmin() ? (this.selectedRegionId ?? undefined) : undefined;
     this.parametreService.updateParametres(this.editSeuil, regionId ?? undefined).subscribe({
       next: updated => {
         this.parametre = updated;

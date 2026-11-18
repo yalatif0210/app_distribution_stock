@@ -46,5 +46,7 @@ public class AnalyseResultatDTO {
         private java.time.LocalDate expireDateFefo;
         /** Allocations déjà planifiées depuis ce site pour ce produit (0 à la génération initiale). */
         private java.math.BigDecimal allocationsExistantes = java.math.BigDecimal.ZERO;
+        /** Vrai si la source cède sous le seuil de sécurité parce que son lot périmera avant d'être consommé. */
+        private boolean exceptionPeremption;
     }
 }

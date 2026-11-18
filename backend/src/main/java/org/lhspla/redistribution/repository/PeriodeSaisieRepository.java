@@ -12,6 +12,12 @@ import java.util.Optional;
 
 @Repository
 public interface PeriodeSaisieRepository extends JpaRepository<PeriodeSaisie, Long> {
+
+    /** Période verrouillée : deux générations de plan sur une même période passent une à une. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM PeriodeSaisie p WHERE p.id = :id")
+    Optional<PeriodeSaisie> verrouiller(@org.springframework.data.repository.query.Param("id") Long id);
+
     Optional<PeriodeSaisie> findByAnneeAndMois(Integer annee, Integer mois);
     List<PeriodeSaisie> findByStatut(String statut);
     List<PeriodeSaisie> findAllByOrderByAnneeDescMoisDesc();

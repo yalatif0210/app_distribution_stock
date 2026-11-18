@@ -18,7 +18,7 @@ import { PlanService } from '../../../core/services/plan.service';
 import { StockService } from '../../../core/services/stock.service';
 import { ReferentielService } from '../../../core/services/referentiel.service';
 import { AuthService } from '../../../core/auth/auth.service';
-import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReattribution, Produit, Structure } from '../../../core/models/models';
+import { AnalyseResultat, AnalyseProduit, StructureAnalyse, StockSourceInfo, LignePlan, PlanReattribution, Produit, Structure } from '../../../core/models/models';
 
 @Component({
   selector: 'app-edition',
@@ -60,9 +60,9 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
           <mat-icon *ngIf="!deletingPlan">delete_outline</mat-icon>
           Supprimer
         </button>
-        <!-- Valider : BROUILLON uniquement -->
+        <!-- Valider : BROUILLON uniquement, pharmacien ou admin -->
         <button mat-raised-button color="primary"
-          *ngIf="plan.statut === 'BROUILLON'"
+          *ngIf="plan.statut === 'BROUILLON' && auth.isPharmacienRegion()"
           (click)="valider()"
           [disabled]="!plan.lignes?.length || validating"
           matTooltip="Valider et soumettre le plan">
@@ -89,9 +89,9 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
       <div *ngIf="plan.statut === 'VALIDE' || plan.statut === 'EN_COURS'"
            style="display:flex;align-items:center;gap:.875rem;padding:.875rem 1.25rem;background:rgba(79,70,229,.07);border:1px solid rgba(79,70,229,.25);border-radius:.5rem;margin-bottom:1.25rem;color:#4338ca;">
         <mat-icon style="color:#6366f1;">task_alt</mat-icon>
-        <span>Plan <strong>validé</strong> — enregistrez les exécutions ligne par ligne.
-          <ng-container *ngIf="auth.isSuperviseur() || auth.isAdmin()">
-            Les superviseurs peuvent également supprimer les lignes non exécutées.
+        <span>Plan <strong>validé</strong> : enregistrez les exécutions ligne par ligne.
+          <ng-container *ngIf="auth.isAdmin()">
+            Les administrateurs peuvent également supprimer les lignes non exécutées.
           </ng-container>
         </span>
         <span style="flex:1;"></span>
@@ -102,7 +102,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
       <div *ngIf="plan.statut === 'CLOTURE'"
            style="display:flex;align-items:center;gap:.75rem;padding:.875rem 1.25rem;background:rgba(107,114,128,.07);border:1px solid rgba(107,114,128,.25);border-radius:.5rem;margin-bottom:1.25rem;color:#374151;">
         <mat-icon style="color:#6b7280;">verified</mat-icon>
-        <span>Plan <strong>clôturé</strong> — toutes les lignes ont été exécutées ou annulées.</span>
+        <span>Plan <strong>clôturé</strong> : toutes les lignes ont été exécutées ou annulées.</span>
       </div>
 
       <!-- Résumé IA -->
@@ -121,7 +121,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
         <mat-card-header style="padding:.75rem 1rem .4rem;background:rgba(99,102,241,.05);">
           <mat-card-title style="font-size:.95rem;color:#4338ca;display:flex;align-items:center;gap:.5rem;">
             <mat-icon style="color:var(--accent-color);">edit</mat-icon>
-            Modifier la ligne — {{ editingLigne.produitNom }}
+            Modifier la ligne : {{ editingLigne.produitNom }}
           </mat-card-title>
         </mat-card-header>
         <mat-card-content style="padding:.875rem 1rem;">
@@ -145,16 +145,21 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
             <strong style="color:#15803d;font-family:monospace;">{{ editForm.stockNet | number:'1.0-0' }}</strong>
             <span style="color:var(--text-secondary);">(brut : {{ editForm.stockBrut | number:'1.0-0' }} − allocations : {{ (editForm.stockBrut! - editForm.stockNet!) | number:'1.0-0' }})</span>
           </div>
+          <div *ngIf="editForm.cessible" style="font-size:.8rem;color:#475569;margin:-.4rem 0 .75rem;line-height:1.45;">
+            Cessible au maximum : <strong style="font-family:monospace;color:#0f172a;">{{ editForm.cessible.quantiteMaxCessible | number:'1.0-0' }}</strong>
+            <span *ngIf="!editForm.cessible.exceptionPeremption">(la source garde au moins {{ editForm.cessible.seuilSecuriteMsd }} mois de stock, seuil de sécurité de la région)</span>
+            <span *ngIf="editForm.cessible.exceptionPeremption" style="color:#b45309;">(exception péremption : la part du lot qui périmera avant d'être consommée peut être cédée, même sous le seuil de {{ editForm.cessible.seuilSecuriteMsd }} mois)</span>
+          </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:.75rem;">
             <mat-form-field appearance="fill" style="width:100%;">
               <mat-label>Quantité</mat-label>
               <input matInput type="number" min="1" [(ngModel)]="editForm.quantite">
-              <mat-hint *ngIf="editForm.stockNet !== null">Max : {{ editForm.stockNet | number:'1.0-0' }}</mat-hint>
+              <mat-hint *ngIf="editForm.cessible">Max cessible : {{ editForm.cessible.quantiteMaxCessible | number:'1.0-0' }}</mat-hint>
             </mat-form-field>
             <div style="padding:.5rem .75rem;background:#f8fafc;border:1px solid var(--border-color);border-radius:.375rem;font-size:.82rem;display:flex;align-items:center;gap:.5rem;">
               <mat-icon style="font-size:15px;width:15px;height:15px;color:var(--text-secondary);">event</mat-icon>
               Péremption FEFO :
-              <strong style="font-family:monospace;">{{ editingLigne.expireDate ? (editingLigne.expireDate | date:'dd/MM/yyyy') : '—' }}</strong>
+              <strong style="font-family:monospace;">{{ editingLigne.expireDate ? (editingLigne.expireDate | date:'dd/MM/yyyy') : '-' }}</strong>
             </div>
           </div>
           <mat-form-field appearance="fill" style="width:100%;margin-bottom:.875rem;">
@@ -185,7 +190,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
         <mat-card-header style="padding:.75rem 1rem .4rem;background:rgba(22,163,74,.05);">
           <mat-card-title style="font-size:.95rem;color:#15803d;display:flex;align-items:center;gap:.5rem;">
             <mat-icon style="color:#22c55e;">play_circle</mat-icon>
-            Enregistrer l'exécution — {{ executingLigne.produitNom }}
+            Enregistrer l'exécution : {{ executingLigne.produitNom }}
           </mat-card-title>
         </mat-card-header>
         <mat-card-content style="padding:.875rem 1rem;">
@@ -237,9 +242,9 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
         <mat-card-header style="padding:.875rem 1rem .25rem;">
           <mat-card-title style="display:flex;align-items:center;justify-content:space-between;width:100%;font-size:.95rem;">
             <span>Mouvements du plan ({{ dsLignes.data.length }})</span>
-            <!-- Bouton ajouter : BROUILLON uniquement -->
+            <!-- Bouton ajouter : BROUILLON uniquement, pharmacien ou admin -->
             <button mat-stroked-button color="primary"
-              *ngIf="plan.statut === 'BROUILLON'"
+              *ngIf="plan.statut === 'BROUILLON' && auth.isPharmacienRegion()"
               (click)="toggleAjout()" [class.active]="showAjout">
               <mat-icon>{{ showAjout ? 'close' : 'add' }}</mat-icon>
               {{ showAjout ? 'Annuler' : 'Ajouter une ligne' }}
@@ -260,13 +265,13 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
           <div *ngIf="!loadingAnalyse && produitsEnTension.length === 0"
                style="padding:.75rem 1rem;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:.375rem;font-size:.85rem;color:#92400e;margin-bottom:.75rem;">
             <mat-icon style="font-size:16px;width:16px;height:16px;vertical-align:middle;">info</mat-icon>
-            Aucun produit en tension ou rupture détecté — aucune ligne ne peut être ajoutée.
+            Aucun produit en tension ou rupture détecté. Aucune ligne ne peut être ajoutée.
           </div>
 
           <!-- Formulaire pas à pas (calqué sur génération manuelle) -->
           <ng-container *ngIf="!loadingAnalyse && produitsEnTension.length > 0">
 
-            <!-- Étape 1 — Produit -->
+            <!-- Étape 1 : Produit -->
             <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">1. Produit en tension</div>
             <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
               <mat-label>Produit</mat-label>
@@ -280,7 +285,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
 
             <ng-container *ngIf="ajout.produitId">
 
-              <!-- Étape 2 — Structure cible -->
+              <!-- Étape 2 : Structure cible -->
               <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">2. Structure destinataire (en tension / rupture)</div>
               <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
                 <mat-label>Structure cible</mat-label>
@@ -295,16 +300,16 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
                 </mat-select>
               </mat-form-field>
 
-              <!-- Étape 3 — Structure source -->
-              <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">3. Structure source (en surstock ou stock dormant)</div>
+              <!-- Étape 3 : Structure source -->
+              <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">3. Structure source (au-dessus du seuil de sécurité, stock dormant ou lot à risque de péremption)</div>
               <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
                 <mat-label>Structure source</mat-label>
                 <mat-select [(ngModel)]="ajout.sourceId" (ngModelChange)="onAjoutSourceChange()">
                   <mat-option [value]="null">-- Sélectionner --</mat-option>
                   <mat-option *ngFor="let s of sourcesAjout" [value]="s.structureId">
                     {{ s.structureNom }}
-                    <span *ngIf="s.statutStock === 'STOCK_DORMANT'" style="color:#475569;font-size:.78rem;"> (Stock dormant — {{ s.excedent | number:'1.0-0' }} unités redistribuables)</span>
-                    <span *ngIf="s.statutStock !== 'STOCK_DORMANT'" style="color:var(--text-secondary);font-size:.78rem;"> (MSD : {{ s.msd | number:'1.1-1' }} · excédent : {{ s.excedent | number:'1.0-0' }})</span>
+                    <span *ngIf="s.statutStock === 'STOCK_DORMANT'" style="color:#475569;font-size:.78rem;"> (Stock dormant : {{ s.excedent | number:'1.0-0' }} unités redistribuables)</span>
+                    <span *ngIf="s.statutStock !== 'STOCK_DORMANT'" style="color:var(--text-secondary);font-size:.78rem;"> (MSD : {{ s.msd | number:'1.1-1' }} · cessible : {{ s.excedent | number:'1.0-0' }}<ng-container *ngIf="s.exceptionPeremption"> · lot à risque de péremption</ng-container>)</span>
                   </mat-option>
                 </mat-select>
               </mat-form-field>
@@ -320,23 +325,28 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
                 <strong style="color:#15803d;font-family:monospace;">{{ ajout.stockNet | number:'1.0-0' }}</strong>
                 <span style="color:var(--text-secondary);">(brut : {{ ajout.stockBrut | number:'1.0-0' }} − allocations : {{ (ajout.stockBrut! - ajout.stockNet!) | number:'1.0-0' }})</span>
               </div>
+              <div *ngIf="ajout.cessible" style="font-size:.8rem;color:#475569;margin:-.4rem 0 .75rem;line-height:1.45;">
+                Cessible au maximum : <strong style="font-family:monospace;color:#0f172a;">{{ ajout.cessible.quantiteMaxCessible | number:'1.0-0' }}</strong>
+                <span *ngIf="!ajout.cessible.exceptionPeremption">(la source garde au moins {{ ajout.cessible.seuilSecuriteMsd }} mois de stock, seuil de sécurité de la région)</span>
+                <span *ngIf="ajout.cessible.exceptionPeremption" style="color:#b45309;">(exception péremption : la part du lot qui périmera avant d'être consommée peut être cédée, même sous le seuil de {{ ajout.cessible.seuilSecuriteMsd }} mois)</span>
+              </div>
 
-              <!-- Étape 4 — Quantité -->
+              <!-- Étape 4 : Quantité -->
               <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">4. Quantité à redistribuer</div>
               <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;" *ngIf="ajout.sourceId">
                 <mat-label>Quantité</mat-label>
                 <input matInput type="number" min="1" [(ngModel)]="ajout.quantite">
                 <mat-error *ngIf="ajoutQuantiteDepasse">
-                  Dépasse le stock disponible net ({{ ajout.stockNet | number:'1.0-0' }})
+                  Dépasse ce que la source peut céder ({{ ajout.cessible?.quantiteMaxCessible | number:'1.0-0' }})
                 </mat-error>
               </mat-form-field>
 
-              <!-- Étape 5 — Date péremption FEFO -->
-              <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">5. Date de péremption — lot FEFO (source)</div>
+              <!-- Étape 5 : Date péremption FEFO -->
+              <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">5. Date de péremption : lot FEFO (source)</div>
               <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .875rem;background:#f8fafc;border:1px solid var(--border-color);border-radius:.375rem;font-size:.875rem;margin-bottom:.875rem;min-height:40px;">
                 <mat-icon style="font-size:16px;width:16px;height:16px;color:var(--text-secondary);">event</mat-icon>
                 <span *ngIf="ajout.expireDate" style="font-family:monospace;">{{ ajout.expireDate | date:'dd/MM/yyyy' }}</span>
-                <span *ngIf="!ajout.expireDate" style="color:var(--text-secondary);font-style:italic;">— alimentée automatiquement dès la source sélectionnée —</span>
+                <span *ngIf="!ajout.expireDate" style="color:var(--text-secondary);font-style:italic;">Alimentée automatiquement dès la source sélectionnée</span>
               </div>
 
               <!-- Bouton ajouter -->
@@ -351,7 +361,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
               <!-- Alerte quantité dépassée -->
               <div *ngIf="ajoutQuantiteDepasse" style="margin-top:.5rem;padding:.5rem .75rem;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:.375rem;font-size:.82rem;color:#b91c1c;">
                 <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">block</mat-icon>
-                Quantité supérieure au stock disponible net — ajout bloqué.
+                Quantité supérieure au stock disponible net : ajout bloqué.
               </div>
 
             </ng-container><!-- fin ng-container produitId -->
@@ -402,14 +412,14 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
             <ng-container matColumnDef="qtExec">
               <th mat-header-cell *matHeaderCellDef style="text-align:right;">Qté exécutée</th>
               <td mat-cell *matCellDef="let l" style="text-align:right;font-family:monospace;color:#16a34a;">
-                {{ l.quantiteExecutee != null ? (l.quantiteExecutee | number:'1.0-0') : '—' }}
+                {{ l.quantiteExecutee != null ? (l.quantiteExecutee | number:'1.0-0') : '-' }}
               </td>
             </ng-container>
 
             <ng-container matColumnDef="expireDate">
               <th mat-header-cell *matHeaderCellDef>Péremption (FEFO)</th>
               <td mat-cell *matCellDef="let l" style="font-size:.82rem;color:var(--text-secondary);">
-                {{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '—' }}
+                {{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '-' }}
               </td>
             </ng-container>
 
@@ -428,8 +438,8 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
               <th mat-header-cell *matHeaderCellDef></th>
               <td mat-cell *matCellDef="let l" style="text-align:right;white-space:nowrap;">
 
-                <!-- BROUILLON : modifier + supprimer -->
-                <ng-container *ngIf="plan!.statut === 'BROUILLON'">
+                <!-- BROUILLON : modifier + supprimer (pharmacien ou admin) -->
+                <ng-container *ngIf="plan!.statut === 'BROUILLON' && auth.isPharmacienRegion()">
                   <button mat-icon-button color="primary" style="width:34px;height:34px;"
                     (click)="startEdit(l)"
                     [disabled]="!!editingLigne || !!executingLigne"
@@ -447,7 +457,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
                 <!-- VALIDE / EN_COURS : exécuter + supprimer (superviseur) -->
                 <ng-container *ngIf="plan!.statut === 'VALIDE' || plan!.statut === 'EN_COURS'">
                   <button mat-icon-button style="color:#16a34a;width:34px;height:34px;"
-                    *ngIf="l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && (auth.isPharmacienRegion() || auth.isSuperviseur())"
+                    *ngIf="l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && auth.isPharmacienRegion()"
                     (click)="startExecute(l)"
                     [disabled]="!!executingLigne || !!editingLigne"
                     matTooltip="Enregistrer l'exécution">
@@ -457,12 +467,12 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, LignePlan, PlanReatt
                     style="color:#16a34a;font-size:20px;width:20px;height:20px;vertical-align:middle;margin-right:4px;">
                     check_circle
                   </mat-icon>
-                  <!-- Supprimer réservé au superviseur/admin -->
+                  <!-- Supprimer une ligne d'un plan validé : réservé à l'admin -->
                   <button mat-icon-button color="warn" style="width:34px;height:34px;"
-                    *ngIf="l.statut !== 'EXECUTE' && (auth.isSuperviseur() || auth.isAdmin())"
+                    *ngIf="l.statut !== 'EXECUTE' && auth.isAdmin()"
                     (click)="supprimerLigne(l)"
                     [disabled]="!!executingLigne || !!editingLigne"
-                    matTooltip="Supprimer (superviseur)">
+                    matTooltip="Supprimer (administrateur)">
                     <mat-icon style="font-size:18px;width:18px;height:18px;">delete_outline</mat-icon>
                   </button>
                 </ng-container>
@@ -523,7 +533,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
   ajout: {
     produitId: number | null; cibleId: number | null; sourceId: number | null;
     quantite: number | null; expireDate: string | null;
-    stockNet: number | null; stockBrut: number | null;
+    stockNet: number | null; stockBrut: number | null; cessible: StockSourceInfo | null;
     loadingStock: boolean; enCours: boolean;
   } = this.ajoutVide();
 
@@ -536,7 +546,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
     quantite: number | null;
     notes: string;
     stockNet: number | null;
-    stockBrut: number | null;
+    stockBrut: number | null; cessible: StockSourceInfo | null;
     loadingStock: boolean;
     saving: boolean;
   } = this.editFormVide();
@@ -603,8 +613,8 @@ export class EditionComponent implements OnInit, AfterViewInit {
   }
 
   get editQuantiteDepasse(): boolean {
-    return this.editForm.quantite !== null && this.editForm.stockNet !== null
-        && this.editForm.quantite > this.editForm.stockNet;
+    return this.editForm.quantite !== null && this.editForm.cessible !== null
+        && this.editForm.quantite > this.editForm.cessible.quantiteMaxCessible;
   }
 
   get peutSauvegarderEdit(): boolean {
@@ -623,8 +633,8 @@ export class EditionComponent implements OnInit, AfterViewInit {
   }
 
   get ajoutQuantiteDepasse(): boolean {
-    return this.ajout.quantite !== null && this.ajout.stockNet !== null
-        && this.ajout.quantite > this.ajout.stockNet;
+    return this.ajout.quantite !== null && this.ajout.cessible !== null
+        && this.ajout.quantite > this.ajout.cessible.quantiteMaxCessible;
   }
 
   get peutAjouterLigne(): boolean {
@@ -685,6 +695,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
     this.ajout.expireDate = null;
     this.ajout.stockNet   = null;
     this.ajout.stockBrut  = null;
+    this.ajout.cessible = null;
   }
 
   onAjoutSourceChange(): void {
@@ -692,6 +703,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
     this.ajout.expireDate = null;
     this.ajout.stockNet   = null;
     this.ajout.stockBrut  = null;
+    this.ajout.cessible = null;
     if (!this.ajout.produitId || !this.ajout.sourceId || !this.plan) return;
     this.ajout.loadingStock = true;
     this.planService.getStockSource(
@@ -701,6 +713,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
         this.ajout.expireDate   = info.expireDateFefo;
         this.ajout.stockNet     = info.stockNet;
         this.ajout.stockBrut    = info.stockBrut;
+        this.ajout.cessible = info;
         this.ajout.loadingStock = false;
       },
       error: () => { this.ajout.loadingStock = false; }
@@ -738,7 +751,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
     this.editForm = {
       quantite: ligne.quantiteProposee,
       notes: ligne.notes ?? '',
-      stockNet: null, stockBrut: null,
+      stockNet: null, stockBrut: null, cessible: null,
       loadingStock: true, saving: false
     };
     this.planService.getStockSource(
@@ -747,6 +760,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
       next: info => {
         this.editForm.stockNet    = info.stockNet;
         this.editForm.stockBrut   = info.stockBrut;
+        this.editForm.cessible = info;
         this.editForm.loadingStock = false;
       },
       error: () => { this.editForm.loadingStock = false; }
@@ -819,7 +833,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
           this.plan = p;
           this.dsLignes.data = p.lignes ?? [];
           if (p.statut === 'CLOTURE') {
-            this.snackBar.open('Toutes les lignes exécutées — plan clôturé.', 'OK', { duration: 4000 });
+            this.snackBar.open('Toutes les lignes exécutées : plan clôturé.', 'OK', { duration: 4000 });
           }
         });
       },
@@ -882,7 +896,7 @@ export class EditionComponent implements OnInit, AfterViewInit {
         this.dsLignes.data = updated.lignes ?? [];
         this.validating = false;
         this.snackBar.open(
-          'Plan validé — enregistrez les exécutions ligne par ligne.',
+          'Plan validé : enregistrez les exécutions ligne par ligne.',
           'OK', { duration: 4000 }
         );
       },
@@ -897,12 +911,12 @@ export class EditionComponent implements OnInit, AfterViewInit {
 
   private ajoutVide() {
     return { produitId: null, cibleId: null, sourceId: null, quantite: null,
-             expireDate: null, stockNet: null, stockBrut: null,
+             expireDate: null, stockNet: null, stockBrut: null, cessible: null,
              loadingStock: false, enCours: false };
   }
 
   private editFormVide() {
-    return { quantite: null, notes: '', stockNet: null, stockBrut: null,
+    return { quantite: null, notes: '', stockNet: null, stockBrut: null, cessible: null,
              loadingStock: false, saving: false };
   }
 }

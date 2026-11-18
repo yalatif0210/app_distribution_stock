@@ -1,0 +1,15 @@
+# Serveur où un nginx est déjà installé sur l'hôte et tient les ports 80/443
+# (plusieurs sites sur la même machine, certificats gérés par certbot sur l'hôte).
+#
+# L'application n'est publiée que sur 127.0.0.1:${HTTP_PORT} en HTTP : seul le nginx de
+# l'hôte peut la joindre, c'est lui qui reçoit le sous-domaine et fait le HTTPS.
+# Exemple de site nginx : deploy/nginx/redistribution.conf
+#
+# Activation, dans .env :  COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml
+#                          HTTP_PORT=8095
+
+services:
+  frontend:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:-8095}:80"
+    volumes: !override []      # pas de certificat dans le conteneur : HTTPS assuré par l'hôte

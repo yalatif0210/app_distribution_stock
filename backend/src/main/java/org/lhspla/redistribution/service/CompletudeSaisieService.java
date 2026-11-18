@@ -117,6 +117,9 @@ public class CompletudeSaisieService {
         for (Long structureId : req.getStructureIds()) {
             List<Utilisateur> gestionnaires = utilisateurRepo.findByStructureId(structureId);
             for (Utilisateur gestionnaire : gestionnaires) {
+                // Relance déjà envoyée et pas encore lue : on n'en ajoute pas une deuxième
+                if (notificationRepo.existsByDestinataireIdAndTypeAndMessageAndLuFalse(
+                        gestionnaire.getId(), "RELANCE_SAISIE", messageTemplate)) continue;
                 Notification notif = new Notification();
                 notif.setType("RELANCE_SAISIE");
                 notif.setMessage(messageTemplate);

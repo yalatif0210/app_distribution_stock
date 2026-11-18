@@ -60,7 +60,7 @@ import { CompletudeDTO, PeriodeSaisie, Region } from '../../core/models/models';
           <mat-label>Période</mat-label>
           <mat-select [(ngModel)]="selectedPeriodId" (selectionChange)="onFilterChange()">
             <mat-option *ngFor="let p of allPeriodes" [value]="p.id">
-              {{ p.libelle ?? p.dateRas }} — {{ p.statut }}
+              {{ p.libelle ?? p.dateRas }} · {{ p.statut }}
             </mat-option>
           </mat-select>
         </mat-form-field>

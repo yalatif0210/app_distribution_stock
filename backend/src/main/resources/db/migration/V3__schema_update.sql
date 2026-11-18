@@ -21,14 +21,5 @@ CREATE INDEX idx_sp_structure ON structure_programme(structure_id);
 CREATE INDEX idx_sp_programme ON structure_programme(programme_id);
 CREATE INDEX idx_periode_region ON periodes_saisie(region_id);
 
--- 4. Seed: lier toutes les structures démo à tous les programmes (toutes actives)
-INSERT INTO structure_programme (structure_id, programme_id, actif)
-SELECT s.id, p.id, TRUE FROM structures s CROSS JOIN programmes p;
-
--- 5. Seed: utilisateur PHARMACIEN_REGION pour la région 1 (mot de passe: Admin@2024)
-INSERT INTO utilisateurs (username, password_hash, nom, prenom, email, role_id, region_id, actif)
-VALUES ('pharmacien1', '$2b$10$b3CMiGM2Bhppin0ncvC5mujq71kQc3dsvaL0EFeBubeOyjAqT5YPu', 'Martin', 'Jean', 'pharmacien1@redistribution.local', 2, 1, TRUE);
-
--- 6. Seed: utilisateur GESTIONNAIRE pour la structure 1 (mot de passe: Admin@2024)
-INSERT INTO utilisateurs (username, password_hash, nom, prenom, email, role_id, structure_id, actif)
-VALUES ('gestionnaire1', '$2b$10$b3CMiGM2Bhppin0ncvC5mujq71kQc3dsvaL0EFeBubeOyjAqT5YPu', 'Dubois', 'Marie', 'gestionnaire1@redistribution.local', 3, 1, TRUE);
+-- 4. Les liens sites/programmes et les comptes d'exemple sont dans backend/demo-db
+--    (V3_1), chargés en local seulement.

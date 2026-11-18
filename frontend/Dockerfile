@@ -3,7 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --silent
+RUN npm ci --silent
 
 COPY . .
 RUN npm run build -- --configuration production
@@ -11,6 +11,8 @@ RUN npm run build -- --configuration production
 # ── Stage 2 : nginx ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist/redistribution/browser /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/site.conf /etc/nginx/site.conf
+COPY nginx/http.conf nginx/https.conf /etc/nginx/modes/
+COPY --chmod=755 nginx/choisir-mode.sh /docker-entrypoint.d/40-choisir-mode.sh
 
-EXPOSE 80
+EXPOSE 80 443

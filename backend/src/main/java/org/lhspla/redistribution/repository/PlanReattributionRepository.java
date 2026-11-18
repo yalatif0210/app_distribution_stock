@@ -10,6 +10,12 @@ import java.util.List;
 
 @Repository
 public interface PlanReattributionRepository extends JpaRepository<PlanReattribution, Long> {
+
+    /** Plan verrouillé jusqu'à la fin de la transaction : les écritures sur un même plan passent une à une. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM PlanReattribution p WHERE p.id = :id")
+    java.util.Optional<PlanReattribution> verrouiller(@Param("id") Long id);
+
     List<PlanReattribution> findByPeriodeId(Long periodeId);
     List<PlanReattribution> findByStatut(String statut);
     List<PlanReattribution> findByPeriodeIdAndStatut(Long periodeId, String statut);
@@ -18,6 +24,15 @@ public interface PlanReattributionRepository extends JpaRepository<PlanReattribu
     List<PlanReattribution> findByPeriodeIdAndStatutNot(Long periodeId, String statut);
     List<PlanReattribution> findByPeriodeIdAndRegionId(Long periodeId, Long regionId);
     List<PlanReattribution> findByPeriodeIdAndRegionIdAndStatutNot(Long periodeId, Long regionId, String statut);
+
+    /** Brouillons d'un même périmètre (période, programme ou tous programmes, région), le plus récent d'abord. */
+    @Query("SELECT p FROM PlanReattribution p " +
+           "WHERE p.periode.id = :periodeId AND p.region.id = :regionId AND p.statut = 'BROUILLON' " +
+           "AND ((:programmeId IS NULL AND p.programme IS NULL) OR p.programme.id = :programmeId) " +
+           "ORDER BY p.dateGeneration DESC")
+    List<PlanReattribution> findBrouillons(@Param("periodeId") Long periodeId,
+                                           @Param("programmeId") Long programmeId,
+                                           @Param("regionId") Long regionId);
 
     @Query("SELECT COUNT(p) > 0 FROM PlanReattribution p " +
            "WHERE p.periode.id = :periodeId AND p.region.id = :regionId " +

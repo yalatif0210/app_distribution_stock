@@ -18,6 +18,4 @@ public class UtilisateurDTO {
     private Long regionId;
     private String regionNom;
     private List<Long> supervisedRegionIds;
-    private List<Long> supervisedDistrictIds;
-    private List<Long> supervisedStructureIds;
 }

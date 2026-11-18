@@ -40,6 +40,10 @@ export interface AnalyseProduit {
 export interface StructureAnalyse {
   structureId: number; structureCode: string; structureNom: string;
   msd: number; stockDisponible: number; cmm: number; besoin: number; excedent: number; statutStock: string;
+  /** Vrai si la source cède sous le seuil de sécurité parce que son lot périmera avant d'être consommé. */
+  exceptionPeremption?: boolean;
+  /** Date de péremption du lot (FEFO) du site. */
+  expireDateFefo?: string | null;
 }
 
 export interface LignePlan {
@@ -56,8 +60,14 @@ export interface StockSourceInfo {
   allocationsExistantes: number;
   stockNet: number;
   expireDateFefo: string | null;
+  /** Ce que la source peut encore céder sans passer sous le seuil de sécurité de la région. */
+  quantiteMaxCessible: number;
+  seuilSecuriteMsd: number;
+  exceptionPeremption: boolean;
 }
 export interface PlanReattribution {
+  /** Génération : l'IA était demandée mais le plan a basculé en répartition manuelle. */
+  basculeManuel?: boolean; motifBascule?: string | null;
   id: number; periodeId: number; periodeLibelle: string;
   programmeId: number; programmeNom: string; regionId: number; regionNom: string;
   statut: string; genereParlA: boolean; resumeIa: string | null;
@@ -138,8 +148,6 @@ export interface UtilisateurDTO {
   regionId: number | null;
   regionNom: string | null;
   supervisedRegionIds: number[];
-  supervisedDistrictIds: number[];
-  supervisedStructureIds: number[];
 }
 
 export interface ImportResult {

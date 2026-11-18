@@ -5,11 +5,14 @@ import org.lhspla.redistribution.dto.response.*;
 import org.lhspla.redistribution.service.ImportReferentielService;
 import org.lhspla.redistribution.service.ReferentielService;
 import org.springframework.http.ResponseEntity;
+import org.lhspla.redistribution.security.Perimetre;
+import org.lhspla.redistribution.security.PerimetreService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 @RestController
@@ -19,26 +22,44 @@ public class ReferentielController {
 
     private final ReferentielService referentielService;
     private final ImportReferentielService importService;
+    private final PerimetreService perimetreService;
+
+    // Lecture du référentiel géographique limitée au périmètre de l'utilisateur :
+    // pharmacien = sa région et tous ses sites ; superviseur = ses régions et tous
+    // leurs sites ; gestionnaire = sa région et sa seule structure ; admin = tout.
 
     @GetMapping("/regions")
     public ResponseEntity<List<RegionDTO>> getRegions() {
-        return ResponseEntity.ok(referentielService.findAllRegions());
+        Set<Long> regions = perimetreService.courant().regionsVisibles();
+        return ResponseEntity.ok(referentielService.findAllRegions().stream()
+                .filter(r -> regions == null || regions.contains(r.getId()))
+                .toList());
     }
 
     @GetMapping("/districts")
     public ResponseEntity<List<DistrictDTO>> getDistricts(@RequestParam(required = false) Long regionId) {
-        return ResponseEntity.ok(referentielService.findDistrictsByRegion(regionId));
+        Set<Long> regions = perimetreService.courant().regionsVisibles();
+        return ResponseEntity.ok(referentielService.findDistrictsByRegion(regionId).stream()
+                .filter(d -> regions == null || (d.getRegionId() != null && regions.contains(d.getRegionId())))
+                .toList());
     }
 
     @GetMapping("/structures")
     public ResponseEntity<List<StructureDTO>> getStructures(
             @RequestParam(required = false) Long regionId,
             @RequestParam(required = false) Long districtId) {
-        return ResponseEntity.ok(referentielService.findStructures(regionId, districtId));
+        Perimetre p = perimetreService.courant();
+        Set<Long> regions = p.regionsVisibles();
+        return ResponseEntity.ok(referentielService.findStructures(regionId, districtId).stream()
+                .filter(s -> p.estGestionnaire()
+                        ? s.getId().equals(p.structureId())
+                        : regions == null || (s.getRegionId() != null && regions.contains(s.getRegionId())))
+                .toList());
     }
 
     @GetMapping("/structures/{id}")
     public ResponseEntity<StructureDTO> getStructure(@PathVariable Long id) {
+        perimetreService.exigerStructure(id);
         return ResponseEntity.ok(referentielService.findStructureById(id));
     }
 
@@ -54,7 +75,10 @@ public class ReferentielController {
 
     @GetMapping("/periodes")
     public ResponseEntity<List<PeriodeSaisieDTO>> getPeriodes() {
-        return ResponseEntity.ok(referentielService.findAllPeriodes());
+        Set<Long> regions = perimetreService.courant().regionsVisibles();
+        return ResponseEntity.ok(referentielService.findAllPeriodes().stream()
+                .filter(pe -> regions == null || (pe.getRegionId() != null && regions.contains(pe.getRegionId())))
+                .toList());
     }
 
     // ─── RÉGIONS ─────────────────────────────────────────────────────────────────

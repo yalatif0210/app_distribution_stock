@@ -1,4 +1,5 @@
-import { Component, OnInit, AfterViewInit, ViewChild } from '@angular/core';
+import { Component, OnInit, AfterViewInit, ViewChild, inject } from '@angular/core';
+import { SeuilsStatutService } from '../../../core/services/seuils-statut.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -29,7 +30,7 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
   template: `
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
       <div>
-        <h1>Stocks — Vue d'ensemble</h1>
+        <h1>Stocks : Vue d'ensemble</h1>
         <p>Historique et état des stocks par période et programme</p>
       </div>
       <div style="display:flex;gap:.5rem;">
@@ -59,7 +60,7 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
           <mat-label>Programme</mat-label>
           <mat-select [(ngModel)]="selectedProgrammeId" (selectionChange)="charger()">
             <mat-option [value]="null">Tous</mat-option>
-            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -88,25 +89,25 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
     <ng-container *ngIf="!loading">
       <!-- Indicateurs KPI -->
       <div class="grid-4" style="margin-bottom:1.25rem;" *ngIf="saisies.length > 0">
-        <div class="stat-card" style="border-left:3px solid #dc2626;">
+        <div class="stat-card">
           <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">Ruptures</div>
           <div class="stat-value" style="color:#dc2626;margin-top:.5rem;">{{ nbRupture }}</div>
           <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD = 0</div>
         </div>
-        <div class="stat-card" style="border-left:3px solid #ea580c;">
+        <div class="stat-card">
           <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">En tension</div>
           <div class="stat-value" style="color:#ea580c;margin-top:.5rem;">{{ nbTension }}</div>
-          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD &lt; 1</div>
+          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD &lt; {{ seuilsStatut.seuils.tension }}</div>
         </div>
-        <div class="stat-card" style="border-left:3px solid #7c3aed;">
+        <div class="stat-card">
           <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">En surstock</div>
           <div class="stat-value" style="color:#7c3aed;margin-top:.5rem;">{{ nbSurstock }}</div>
-          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD &gt; 4</div>
+          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD &gt; {{ seuilsStatut.seuils.surstock }}</div>
         </div>
-        <div class="stat-card" style="border-left:3px solid #16a34a;">
+        <div class="stat-card">
           <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">Normaux</div>
           <div class="stat-value" style="color:#16a34a;margin-top:.5rem;">{{ nbNormal }}</div>
-          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">2 ≤ MSD ≤ 4</div>
+          <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">{{ seuilsStatut.seuils.surveiller }} ≤ MSD ≤ {{ seuilsStatut.seuils.surstock }}</div>
         </div>
       </div>
 
@@ -197,6 +198,7 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
   `
 })
 export class TableauBordComponent implements OnInit, AfterViewInit {
+  seuilsStatut = inject(SeuilsStatutService);
   periodes: PeriodeSaisie[] = [];
   programmes: Programme[] = [];
   regions: Region[] = [];
@@ -260,10 +262,6 @@ export class TableauBordComponent implements OnInit, AfterViewInit {
   }
 
   msdColor(msd: number): string {
-    if (msd === 0)  return '#dc2626';
-    if (msd < 1)    return '#ea580c';
-    if (msd < 2)    return '#d97706';
-    if (msd <= 4)   return '#16a34a';
-    return '#7c3aed';
+    return this.seuilsStatut.couleurMsd(msd);
   }
 }

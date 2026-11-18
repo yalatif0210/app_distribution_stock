@@ -2,12 +2,12 @@ package org.lhspla.redistribution.service;
 
 import lombok.RequiredArgsConstructor;
 import org.lhspla.redistribution.dto.response.AnalyseResultatDTO;
+import org.lhspla.redistribution.entity.Region;
 import org.lhspla.redistribution.entity.SaisieStock;
 import org.lhspla.redistribution.repository.PeriodeSaisieRepository;
 import org.lhspla.redistribution.repository.ProgrammeRepository;
 import org.lhspla.redistribution.repository.RegionRepository;
 import org.lhspla.redistribution.repository.SaisieStockRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,22 +22,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AnalyseStockService {
 
+    /** Seuil de sécurité appliqué si la région n'en a pas (valeur par défaut de la colonne). */
+    public static final BigDecimal SEUIL_SECURITE_PAR_DEFAUT = new BigDecimal("2.0");
+
     private final SaisieStockRepository saisieStockRepo;
     private final PeriodeSaisieRepository periodeRepo;
     private final ProgrammeRepository programmeRepo;
     private final RegionRepository regionRepo;
-
-    @Value("${stock.seuil.tension:1.0}")
-    private double seuilTension;
-
-    @Value("${stock.seuil.surveiller:2.0}")
-    private double seuilSurveiller;
-
-    @Value("${stock.seuil.surstock:4.0}")
-    private double seuilSurstock;
-
-    @Value("${stock.securite.mois:1.0}")
-    private double securiteMois;
+    private final SeuilsStatutService seuilsStatut;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -56,7 +48,9 @@ public class AnalyseStockService {
             resultat.setPeriodeLibelle(libelle);
         });
         programmeRepo.findById(programmeId).ifPresent(p -> resultat.setProgrammeNom(p.getNom()));
-        regionRepo.findById(regionId).ifPresent(r -> resultat.setRegionNom(r.getNom()));
+        Optional<Region> region = regionRepo.findById(regionId);
+        region.ifPresent(r -> resultat.setRegionNom(r.getNom()));
+        BigDecimal seuilSecurite = seuilSecurite(region.orElse(null));
 
         Map<Long, List<SaisieStock>> byProduit = saisies.stream()
                 .collect(Collectors.groupingBy(s -> s.getProduit().getId()));
@@ -74,40 +68,34 @@ public class AnalyseStockService {
 
             List<AnalyseResultatDTO.StructureAnalyseDTO> enRupture = new ArrayList<>();
             List<AnalyseResultatDTO.StructureAnalyseDTO> enTension = new ArrayList<>();
-            List<AnalyseResultatDTO.StructureAnalyseDTO> enSurstock = new ArrayList<>();
+            List<AnalyseResultatDTO.StructureAnalyseDTO> sources = new ArrayList<>();
 
-            // Pour le diagnostic : sites BIEN_STOCKE/SURVEILLER non éligibles et raison
-            long nbExclusSansDate = 0;
-            long nbExclusMsdOk    = 0;
+            // Pour le diagnostic : sites avec stock mais sans rien à céder
+            long nbSousSeuil = 0;
 
             for (SaisieStock saisie : entry.getValue()) {
                 String statut = calculerStatut(saisie);
-                AnalyseResultatDTO.StructureAnalyseDTO structDTO = toStructureAnalyseDTO(saisie, statut);
+                AnalyseResultatDTO.StructureAnalyseDTO structDTO = toStructureAnalyseDTO(saisie, statut, seuilSecurite);
+                boolean cible = "RUPTURE".equals(statut) || "TENSION".equals(statut);
 
-                switch (statut) {
-                    case "RUPTURE"       -> enRupture.add(structDTO);
-                    case "TENSION"       -> enTension.add(structDTO);
-                    case "SURSTOCK"      -> enSurstock.add(structDTO);
-                    case "STOCK_DORMANT" -> enSurstock.add(structDTO);
-                    // Condition B : BIEN_STOCKE/SURVEILLER avec risque de péremption → source éligible
-                    case "BIEN_STOCKE", "SURVEILLER" -> {
-                        if (hasRisquePeremption(saisie)) {
-                            enSurstock.add(structDTO);
-                        } else if (saisie.getExpireDate() == null) {
-                            nbExclusSansDate++;
-                        } else {
-                            nbExclusMsdOk++;
-                        }
-                    }
+                if ("RUPTURE".equals(statut)) enRupture.add(structDTO);
+                if ("TENSION".equals(statut)) enTension.add(structDTO);
+
+                // Source : tout site qui a quelque chose à céder. Une cible ne peut l'être
+                // que pour la part de son lot qui périmera avant d'être consommée (double rôle).
+                if (structDTO.getExcedent().signum() > 0) {
+                    sources.add(structDTO);
+                } else if (!cible) {
+                    nbSousSeuil++;
                 }
             }
 
             produitDTO.setStructuresEnRupture(enRupture);
             produitDTO.setStructuresEnTension(enTension);
-            produitDTO.setStructuresEnSurstock(enSurstock);
+            produitDTO.setStructuresEnSurstock(sources);
 
-            BigDecimal totalExcedent = enSurstock.stream()
-                    .map(s -> s.getExcedent() != null ? s.getExcedent() : BigDecimal.ZERO)
+            BigDecimal totalExcedent = sources.stream()
+                    .map(AnalyseResultatDTO.StructureAnalyseDTO::getExcedent)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal totalBesoin = enRupture.stream()
                     .map(s -> s.getBesoin() != null ? s.getBesoin() : BigDecimal.ZERO)
@@ -116,11 +104,10 @@ public class AnalyseStockService {
                     .map(s -> s.getBesoin() != null ? s.getBesoin() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add));
 
-            if (enSurstock.isEmpty()) {
+            if (sources.isEmpty()) {
                 produitDTO.setPotentielRedistribution("AUCUN_SURSTOCK");
                 produitDTO.setDiagnostiqueSource(construireDiagnostique(
-                        entry.getValue().size(), nbExclusSansDate, nbExclusMsdOk,
-                        enRupture.size(), enTension.size()));
+                        entry.getValue().size(), nbSousSeuil, enRupture.size(), enTension.size(), seuilSecurite));
             } else if (totalExcedent.compareTo(totalBesoin) >= 0) {
                 produitDTO.setPotentielRedistribution("POSSIBLE");
             } else {
@@ -129,7 +116,7 @@ public class AnalyseStockService {
 
             if (!enRupture.isEmpty()) nbRupture++;
             if (!enTension.isEmpty()) nbTension++;
-            if (!enSurstock.isEmpty()) nbSurstock++;
+            if (!sources.isEmpty()) nbSurstock++;
 
             produits.add(produitDTO);
         }
@@ -141,66 +128,100 @@ public class AnalyseStockService {
         return resultat;
     }
 
+    /** Seuil de sécurité (en mois de stock) que toute source de la région doit conserver. */
+    public static BigDecimal seuilSecurite(Region region) {
+        return region != null && region.getSeuilStockSecuriteMsd() != null
+                ? region.getSeuilStockSecuriteMsd() : SEUIL_SECURITE_PAR_DEFAUT;
+    }
+
     public String calculerStatut(SaisieStock saisie) {
         if (saisie.getCmm() == null || saisie.getCmm().compareTo(BigDecimal.ZERO) <= 0) {
             return saisie.getStockDisponible().compareTo(BigDecimal.ZERO) == 0 ? "RUPTURE" : "STOCK_DORMANT";
         }
-        BigDecimal msd = saisie.getMsd() != null ? saisie.getMsd()
-                : saisie.getStockDisponible().divide(saisie.getCmm(), 2, RoundingMode.HALF_UP);
-
-        if (msd.compareTo(BigDecimal.ZERO) == 0) return "RUPTURE";
-        if (msd.compareTo(BigDecimal.valueOf(seuilTension)) < 0) return "TENSION";
-        if (msd.compareTo(BigDecimal.valueOf(seuilSurveiller)) < 0) return "SURVEILLER";
-        if (msd.compareTo(BigDecimal.valueOf(seuilSurstock)) <= 0) return "BIEN_STOCKE";
-        return "SURSTOCK";
+        return seuilsStatut.statut(msd(saisie));
     }
 
-    private String construireDiagnostique(int total, long sansDate, long msdOk, int ruptures, int tensions) {
+    private static BigDecimal msd(SaisieStock saisie) {
+        return saisie.getMsd() != null ? saisie.getMsd()
+                : saisie.getStockDisponible().divide(saisie.getCmm(), 2, RoundingMode.HALF_UP);
+    }
+
+    private String construireDiagnostique(int total, long sousSeuil, int ruptures, int tensions, BigDecimal seuil) {
         if (total == 0) return "Aucune saisie soumise pour ce produit dans la région.";
         StringBuilder sb = new StringBuilder();
-        sb.append(total).append(" saisie(s) analysée(s) — ");
+        sb.append(total).append(" saisie(s) analysée(s) : ");
         if (ruptures + tensions == total) {
             sb.append("toutes en RUPTURE/TENSION (cibles uniquement, aucune source disponible).");
             return sb.toString();
         }
         sb.append(ruptures + tensions).append(" cible(s), ");
-        long autresSource = total - ruptures - tensions;
-        sb.append(autresSource).append(" site(s) avec stock :");
-        if (sansDate > 0) sb.append(" ").append(sansDate)
-                .append(" BIEN_STOCKE/SURVEILLER exclus (date de péremption non renseignée dans la saisie) ;");
-        if (msdOk > 0) sb.append(" ").append(msdOk)
-                .append(" BIEN_STOCKE/SURVEILLER exclus (MSD ≤ mois restants — pas de surplus voué à périmer) ;");
-        long restants = autresSource - sansDate - msdOk;
-        if (restants > 0) sb.append(" ").append(restants).append(" autre(s) statut non éligible(s) ;");
-        return sb.toString().replaceAll(";$", ".");
+        sb.append(sousSeuil).append(" site(s) avec un MSD inférieur ou égal au seuil de sécurité régional (")
+          .append(seuil.stripTrailingZeros().toPlainString())
+          .append(" mois) et sans lot voué à périmer : rien à céder.");
+        return sb.toString();
     }
 
-    private boolean hasRisquePeremption(SaisieStock saisie) {
-        if (saisie.getCmm() == null || saisie.getCmm().compareTo(BigDecimal.ZERO) <= 0) return false;
-        if (saisie.getExpireDate() == null || saisie.getMsd() == null) return false;
-        double moisRestants = ChronoUnit.DAYS.between(LocalDate.now(), saisie.getExpireDate()) / 30.0;
-        return moisRestants > 0 && saisie.getMsd().doubleValue() > moisRestants;
+    /** Mois restant avant la péremption du lot, ou null si la date est inconnue ou passée. */
+    private static Double moisAvantPeremption(SaisieStock saisie) {
+        if (saisie.getExpireDate() == null) return null;
+        double mois = ChronoUnit.DAYS.between(LocalDate.now(), saisie.getExpireDate()) / 30.0;
+        return mois > 0 ? mois : null;
     }
 
-    public BigDecimal calculerExcedent(SaisieStock saisie) {
-        if (saisie.getCmm() == null || saisie.getCmm().compareTo(BigDecimal.ZERO) <= 0) {
-            // STOCK_DORMANT : tout le stock est redistribuable (pas de seuil de sécurité applicable)
-            return saisie.getStockDisponible().compareTo(BigDecimal.ZERO) > 0
-                    ? saisie.getStockDisponible() : BigDecimal.ZERO;
+    /**
+     * Part du lot qui périmera avant d'être consommée : stock − (mois restants × CMM).
+     * Zéro si le site consommera tout son stock avant la péremption.
+     */
+    public BigDecimal surplusPerimable(SaisieStock saisie) {
+        if (saisie.getCmm() == null || saisie.getCmm().signum() <= 0) return BigDecimal.ZERO;
+        Double mois = moisAvantPeremption(saisie);
+        if (mois == null) return BigDecimal.ZERO;
+        BigDecimal consommable = saisie.getCmm().multiply(BigDecimal.valueOf(mois));
+        return saisie.getStockDisponible().subtract(consommable).max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.DOWN);
+    }
+
+    /**
+     * Quantité qu'un site peut céder, avant déduction des allocations déjà planifiées.
+     * <ul>
+     *   <li>stock dormant (aucune consommation) : tout le stock ;</li>
+     *   <li>cas général : ce qui dépasse le seuil de sécurité régional, stock − seuil × CMM ;
+     *       un site en rupture ou en tension ne cède rien à ce titre ;</li>
+     *   <li>exception péremption : si le lot périmera avant d'être consommé, le site peut céder
+     *       cette part même si elle le fait passer sous le seuil de sécurité.</li>
+     * </ul>
+     */
+    public BigDecimal calculerExcedent(SaisieStock saisie, BigDecimal seuilSecurite) {
+        BigDecimal stock = saisie.getStockDisponible();
+        if (saisie.getCmm() == null || saisie.getCmm().signum() <= 0) {
+            return stock.signum() > 0 ? stock : BigDecimal.ZERO;
         }
-        BigDecimal stockSecurite = saisie.getCmm().multiply(BigDecimal.valueOf(securiteMois * 2));
-        BigDecimal excedent = saisie.getStockDisponible().subtract(stockSecurite);
-        return excedent.compareTo(BigDecimal.ZERO) > 0 ? excedent : BigDecimal.ZERO;
+        return calculerExcedentHorsPeremption(saisie, seuilSecurite).max(surplusPerimable(saisie));
     }
 
+    /** Vrai si la quantité cessible vient de l'exception péremption et non du seuil de sécurité. */
+    public boolean cedeParExceptionPeremption(SaisieStock saisie, BigDecimal seuilSecurite) {
+        if (saisie.getCmm() == null || saisie.getCmm().signum() <= 0) return false;
+        BigDecimal perimable = surplusPerimable(saisie);
+        return perimable.signum() > 0 && perimable.compareTo(calculerExcedentHorsPeremption(saisie, seuilSecurite)) > 0;
+    }
+
+    private BigDecimal calculerExcedentHorsPeremption(SaisieStock saisie, BigDecimal seuilSecurite) {
+        String statut = calculerStatut(saisie);
+        if ("RUPTURE".equals(statut) || "TENSION".equals(statut)) return BigDecimal.ZERO;
+        return saisie.getStockDisponible().subtract(saisie.getCmm().multiply(seuilSecurite)).max(BigDecimal.ZERO);
+    }
+
+    /** Quantité pour amener la cible au seuil « à surveiller », c'est-à-dire hors tension. */
     public BigDecimal calculerBesoin(SaisieStock saisie) {
         if (saisie.getCmm() == null || saisie.getCmm().compareTo(BigDecimal.ZERO) <= 0) return BigDecimal.ZERO;
-        BigDecimal cible = saisie.getCmm().multiply(BigDecimal.valueOf(2));
+        BigDecimal cible = saisie.getCmm().multiply(seuilsStatut.seuils().surveiller());
         BigDecimal besoin = cible.subtract(saisie.getStockDisponible());
         return besoin.compareTo(BigDecimal.ZERO) > 0 ? besoin : BigDecimal.ZERO;
     }
 
-    private AnalyseResultatDTO.StructureAnalyseDTO toStructureAnalyseDTO(SaisieStock saisie, String statut) {
+    private AnalyseResultatDTO.StructureAnalyseDTO toStructureAnalyseDTO(SaisieStock saisie, String statut,
+                                                                         BigDecimal seuilSecurite) {
         AnalyseResultatDTO.StructureAnalyseDTO dto = new AnalyseResultatDTO.StructureAnalyseDTO();
         dto.setStructureId(saisie.getStructure().getId());
         dto.setStructureCode(saisie.getStructure().getCode());
@@ -210,7 +231,8 @@ public class AnalyseStockService {
         dto.setCmm(saisie.getCmm());
         dto.setStatutStock(statut);
         dto.setBesoin(calculerBesoin(saisie));
-        dto.setExcedent(calculerExcedent(saisie));
+        dto.setExcedent(calculerExcedent(saisie, seuilSecurite));
+        dto.setExceptionPeremption(cedeParExceptionPeremption(saisie, seuilSecurite));
         dto.setExpireDateFefo(saisie.getExpireDate());
         dto.setAllocationsExistantes(BigDecimal.ZERO);
         return dto;

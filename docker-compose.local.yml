@@ -1,0 +1,27 @@
+# Surcharge pour un poste de développement (activée par COMPOSE_FILE dans .env).
+# Ne JAMAIS utiliser sur le serveur.
+name: redistribution-local
+
+services:
+  backend:
+    environment:
+      APP_DEMO_ENABLED: "true"                         # comptes démo / Admin@2024
+      MISTRAL_API_KEY: ""                              # appels IA neutralisés :
+      MISTRAL_API_URL: http://127.0.0.1:9/disabled     # plans générés en mode manuel
+      # Données d'exemple (backend/demo-db) : montées ici seulement, absentes de l'image
+      FLYWAY_LOCATIONS: classpath:db/migration,filesystem:/app/demo-db
+    volumes:
+      - ./backend/demo-db:/app/demo-db:ro
+    networks: !override [interne]                      # backend sans aucune sortie
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:-8086}:80"              # poste local uniquement
+
+# Sous-réseaux fixés : l'attribution automatique (172.31.0.0/16) chevauche le
+# réseau WSL de Rancher Desktop (172.31.112.0/20) et coupe la redirection de port.
+networks:
+  interne:
+    ipam: { config: [{ subnet: 10.232.1.0/24 }] }
+  exposition:
+    ipam: { config: [{ subnet: 10.232.2.0/24 }] }

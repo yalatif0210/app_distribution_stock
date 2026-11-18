@@ -15,6 +15,8 @@ import org.lhspla.redistribution.repository.UtilisateurRepository;
 import org.lhspla.redistribution.service.AnalyseStockService;
 import org.lhspla.redistribution.service.ImportExcelService;
 import org.lhspla.redistribution.service.StockService;
+import org.lhspla.redistribution.security.Perimetre;
+import org.lhspla.redistribution.security.PerimetreService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/stocks")
@@ -36,6 +39,7 @@ public class StockController {
     private final ImportExcelService importExcelService;
     private final AnalyseStockService analyseStockService;
     private final UtilisateurRepository utilisateurRepository;
+    private final PerimetreService perimetreService;
 
     // ─── Workflow état SUGGESTED / SUBMITTED ─────────────────────────────────
 
@@ -45,17 +49,8 @@ public class StockController {
             @RequestParam Long programmeId,
             @RequestParam Long structureId,
             @AuthenticationPrincipal UserDetails user) {
-        if (user != null) {
-            Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
-                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-            if ("GESTIONNAIRE".equals(u.getRole().getName())) {
-                Long myStructureId = u.getStructure() != null ? u.getStructure().getId() : null;
-                if (!structureId.equals(myStructureId)) {
-                    throw new org.springframework.security.access.AccessDeniedException(
-                            "Accès refusé : vous ne pouvez consulter que l'état de stock de votre propre structure.");
-                }
-            }
-        }
+        // Gestionnaire : sa structure ; pharmacien / superviseur : les sites de leurs régions
+        perimetreService.exigerStructure(structureId);
         return ResponseEntity.ok(stockService.getEtat(periodeId, programmeId, structureId));
     }
 
@@ -66,13 +61,7 @@ public class StockController {
             @RequestParam Long programmeId,
             @RequestParam Long structureId,
             @AuthenticationPrincipal UserDetails user) {
-        Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-        Long myStructureId = u.getStructure() != null ? u.getStructure().getId() : null;
-        if (!structureId.equals(myStructureId)) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Accès refusé : vous ne pouvez initialiser que l'état de stock de votre propre structure.");
-        }
+        perimetreService.exigerStructure(structureId);
         return ResponseEntity.ok(stockService.getOrCreateEtat(periodeId, programmeId, structureId, user.getUsername()));
     }
 
@@ -89,6 +78,7 @@ public class StockController {
     public ResponseEntity<EtatStockDTO> submitEtat(
             @PathVariable Long etatId,
             @AuthenticationPrincipal UserDetails user) {
+        perimetreService.exigerStructure(stockService.structureDeLEtat(etatId));
         return ResponseEntity.ok(stockService.submitEtat(etatId, user.getUsername()));
     }
 
@@ -97,6 +87,7 @@ public class StockController {
     public ResponseEntity<EtatStockDTO> reopenEtat(
             @PathVariable Long etatId,
             @AuthenticationPrincipal UserDetails user) {
+        perimetreService.exigerStructure(stockService.structureDeLEtat(etatId));
         return ResponseEntity.ok(stockService.reopenEtat(etatId, user.getUsername()));
     }
 
@@ -107,27 +98,33 @@ public class StockController {
             @RequestParam Long periodeId,
             @RequestParam(required = false) Long programmeId,
             @AuthenticationPrincipal UserDetails user) {
-        Long structureId = null;
-        if (user != null) {
-            Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
-                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-            if ("GESTIONNAIRE".equals(u.getRole().getName())) {
-                structureId = u.getStructure() != null ? u.getStructure().getId() : null;
-            }
+        Perimetre p = perimetreService.courant();
+        if (p.estGestionnaire()) {
+            if (p.structureId() == null) return ResponseEntity.ok(List.of());
+            return ResponseEntity.ok(stockService.findSaisies(periodeId, programmeId, p.structureId()));
         }
-        return ResponseEntity.ok(stockService.findSaisies(periodeId, programmeId, structureId));
+        List<SaisieStockDTO> saisies = stockService.findSaisies(periodeId, programmeId, null);
+        Set<Long> regions = p.regionsVisibles();
+        if (regions == null) return ResponseEntity.ok(saisies);
+        return ResponseEntity.ok(saisies.stream()
+                .filter(s -> s.getStructureRegionId() != null && regions.contains(s.getStructureRegionId()))
+                .toList());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<SaisieStockDTO> getSaisie(@PathVariable Long id) {
-        return ResponseEntity.ok(stockService.findById(id));
+        SaisieStockDTO saisie = stockService.findById(id);
+        perimetreService.exigerStructure(saisie.getStructureId());
+        return ResponseEntity.ok(saisie);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('GESTIONNAIRE')")
     public ResponseEntity<SaisieStockDTO> modifier(
             @PathVariable Long id,
             @Valid @RequestBody SaisieStockRequest req,
             @AuthenticationPrincipal UserDetails user) {
+        perimetreService.exigerStructure(stockService.findById(id).getStructureId());
         return ResponseEntity.ok(stockService.modifier(id, req, user.getUsername()));
     }
 
@@ -160,6 +157,7 @@ public class StockController {
     }
 
     @GetMapping("/analyse")
+    @PreAuthorize("hasAnyRole('PHARMACIEN_REGION', 'SUPERVISEUR', 'ADMIN')")
     public ResponseEntity<AnalyseResultatDTO> analyser(
             @RequestParam Long periodeId,
             @RequestParam Long programmeId,
@@ -169,11 +167,7 @@ public class StockController {
     }
 
     private Long resolveRegionId(Long provided) {
-        if (provided != null) return provided;
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return utilisateurRepository.findByUsername(username)
-                .map(u -> u.getRegion() != null ? u.getRegion().getId() : null)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        return perimetreService.courant().resoudreRegion(provided);
     }
 
     @GetMapping("/etats")
@@ -182,28 +176,14 @@ public class StockController {
             @RequestParam(required = false) Long programmeId,
             @RequestParam(required = false) Long regionId,
             @AuthenticationPrincipal UserDetails user) {
-        Utilisateur u = utilisateurRepository.findByUsername(user.getUsername())
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-        String role = u.getRole().getName();
-
-        if ("GESTIONNAIRE".equals(role)) {
+        Perimetre p = perimetreService.courant();
+        if (p.estGestionnaire()) {
             // Un gestionnaire ne voit que ses propres états
-            Long structureId = u.getStructure() != null ? u.getStructure().getId() : null;
-            return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, null, structureId));
+            if (p.structureId() == null) return ResponseEntity.ok(List.of());
+            return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, null, p.structureId()));
         }
-
-        // PHARMACIEN_REGION, SUPERVISEUR, ADMIN : filtrage par région ou tout voir
-        Long resolvedRegionId;
-        if (regionId != null) {
-            resolvedRegionId = regionId;
-        } else if (u.getRegion() != null) {
-            resolvedRegionId = u.getRegion().getId();
-        } else if (u.getStructure() != null && u.getStructure().getDistrict() != null
-                && u.getStructure().getDistrict().getRegion() != null) {
-            resolvedRegionId = u.getStructure().getDistrict().getRegion().getId();
-        } else {
-            resolvedRegionId = null; // ADMIN → toutes les régions
-        }
+        // Pharmacien : tous les sites de sa région ; superviseur : une de ses régions ; ADMIN : null = toutes
+        Long resolvedRegionId = p.resoudreRegion(regionId);
         return ResponseEntity.ok(stockService.listEtats(periodeId, programmeId, resolvedRegionId, null));
     }
 
@@ -212,6 +192,7 @@ public class StockController {
     public ResponseEntity<Void> deleteEtat(
             @PathVariable Long etatId,
             @AuthenticationPrincipal UserDetails user) {
+        perimetreService.exigerStructure(stockService.structureDeLEtat(etatId));
         stockService.deleteEtat(etatId, user.getUsername());
         return ResponseEntity.noContent().build();
     }

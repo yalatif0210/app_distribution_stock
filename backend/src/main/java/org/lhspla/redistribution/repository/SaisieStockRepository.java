@@ -17,6 +17,21 @@ public interface SaisieStockRepository extends JpaRepository<SaisieStock, Long> 
 
     Optional<SaisieStock> findByEtatIdAndProduitId(Long etatId, Long produitId);
 
+    /** Recalcule le statut des saisies avec consommation après un changement des seuils de statut. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = """
+        UPDATE saisies_stock SET statut_stock = CASE
+            WHEN msd IS NULL OR msd = 0 THEN 'RUPTURE'
+            WHEN msd <  :tension    THEN 'TENSION'
+            WHEN msd <  :surveiller THEN 'SURVEILLER'
+            WHEN msd <= :surstock   THEN 'BIEN_STOCKE'
+            ELSE 'SURSTOCK' END
+        WHERE cmm > 0
+        """, nativeQuery = true)
+    int recalculerStatuts(@Param("tension") java.math.BigDecimal tension,
+                          @Param("surveiller") java.math.BigDecimal surveiller,
+                          @Param("surstock") java.math.BigDecimal surstock);
+
     List<SaisieStock> findByEtatId(Long etatId);
 
     List<SaisieStock> findByPeriodeId(Long periodeId);

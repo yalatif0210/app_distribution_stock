@@ -38,7 +38,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
         <h1>Suivi d'exécution des plans</h1>
         <p>Consultez et mettez à jour l'avancement des plans de redistribution</p>
       </div>
-      <a mat-raised-button color="primary" routerLink="/plans/generation" *ngIf="!auth.isAdmin()">
+      <a mat-raised-button color="primary" routerLink="/plans/generation" *ngIf="auth.role === 'PHARMACIEN_REGION'">
         <mat-icon>add</mat-icon> Nouveau plan
       </a>
     </div>
@@ -85,7 +85,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
         <mat-card style="margin-bottom:1rem;cursor:pointer;" (click)="togglePlan(plan)">
           <mat-card-header style="padding:.875rem 1rem;">
             <mat-card-title style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;font-size:.95rem;font-weight:600;">
-              <span>Plan #{{ plan.id }} — {{ plan.periodeLibelle }} · {{ plan.programmeNom }} · {{ plan.regionNom }}</span>
+              <span>Plan #{{ plan.id }} · {{ plan.periodeLibelle }} · {{ plan.programmeNom }} · {{ plan.regionNom }}</span>
               <span [class]="statutBadgeClass(plan.statut)" style="font-size:.7rem;">{{ plan.statut }}</span>
               <span *ngIf="plan.genereParlA" style="background:rgba(56,189,248,.15);color:#38bdf8;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:.25rem;">IA</span>
               <span style="flex:1;"></span>
@@ -160,7 +160,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
                     <button
                       mat-stroked-button
                       color="primary"
-                      *ngIf="!auth.isAdmin() && l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && plan.statut !== 'BROUILLON'"
+                      *ngIf="auth.role === 'PHARMACIEN_REGION' && l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && plan.statut !== 'BROUILLON'"
                       (click)="openExecution(plan, l)"
                       style="font-size:.75rem;height:30px;padding:0 .75rem;"
                     >
@@ -201,7 +201,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
     <ng-template #execDialog>
       <h2 mat-dialog-title>Enregistrer l'exécution</h2>
       <mat-dialog-content style="min-width:360px;padding-top:.5rem;" *ngIf="execModal">
-        <p style="color:var(--text-secondary);font-size:.875rem;margin:0 0 .5rem;">{{ execModal.ligne.produitNom }} — {{ execModal.ligne.structureSourceNom }} → {{ execModal.ligne.structureCibleNom }}</p>
+        <p style="color:var(--text-secondary);font-size:.875rem;margin:0 0 .5rem;">{{ execModal.ligne.produitNom }} · {{ execModal.ligne.structureSourceNom }} → {{ execModal.ligne.structureCibleNom }}</p>
         <p style="margin:0 0 1.25rem;font-size:.875rem;">Quantité proposée : <strong style="color:var(--accent-color);">{{ execModal.ligne.quantiteProposee }}</strong></p>
         <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
           <mat-label>Quantité exécutée</mat-label>

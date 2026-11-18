@@ -1,4 +1,5 @@
 import { Component, OnInit, AfterViewInit, ViewChild, inject } from '@angular/core';
+import { SeuilsStatutService } from '../../../core/services/seuils-statut.service';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -50,7 +51,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
           <mat-label>Programme</mat-label>
           <mat-select [(ngModel)]="selectedProgrammeId">
             <mat-option [value]="null">Tous</mat-option>
-            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -124,7 +125,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
           <ng-container matColumnDef="dateSoumission">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>Soumis le</th>
             <td mat-cell *matCellDef="let e" style="font-size:.8rem;color:var(--text-secondary);">
-              {{ e.dateSoumission ? (e.dateSoumission | date:'dd/MM/yyyy HH:mm') : '—' }}
+              {{ e.dateSoumission ? (e.dateSoumission | date:'dd/MM/yyyy HH:mm') : '-' }}
             </td>
           </ng-container>
 
@@ -207,10 +208,10 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
               <td style="padding:.5rem 1rem;font-size:.875rem;font-weight:500;">{{ ligne.produitNom }}</td>
               <td style="padding:.5rem .75rem;text-align:center;font-size:.78rem;color:var(--text-secondary);">{{ ligne.produitUnite }}</td>
               <td style="padding:.5rem .75rem;text-align:right;font-family:monospace;font-size:.875rem;">
-                {{ ligne.saved ? (ligne.stockDisponible ?? '—') : '—' }}
+                {{ ligne.saved ? (ligne.stockDisponible ?? '-') : '-' }}
               </td>
               <td style="padding:.5rem .75rem;text-align:right;font-family:monospace;font-size:.875rem;">
-                {{ ligne.saved ? (ligne.cmm ?? '—') : '—' }}
+                {{ ligne.saved ? (ligne.cmm ?? '-') : '-' }}
               </td>
               <td style="padding:.5rem .75rem;text-align:center;">
                 <span *ngIf="ligne.saved && ligne.msd !== null"
@@ -218,7 +219,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
                   style="font-family:monospace;font-weight:700;font-size:.875rem;">
                   {{ ligne.msd | number:'1.1-1' }}
                 </span>
-                <span *ngIf="!ligne.saved || ligne.msd === null" style="color:var(--text-secondary);font-size:.8rem;">—</span>
+                <span *ngIf="!ligne.saved || ligne.msd === null" style="color:var(--text-secondary);font-size:.8rem;">-</span>
               </td>
               <td style="padding:.5rem .75rem;text-align:center;">
                 <span *ngIf="ligne.saved && ligne.statutStock"
@@ -228,7 +229,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
                 <span *ngIf="!ligne.saved" style="font-size:.72rem;color:var(--text-secondary);font-style:italic;">Non saisi</span>
               </td>
               <td style="padding:.5rem .75rem;text-align:center;font-size:.8rem;">
-                {{ ligne.expireDate ? (ligne.expireDate | date:'dd/MM/yyyy') : '—' }}
+                {{ ligne.expireDate ? (ligne.expireDate | date:'dd/MM/yyyy') : '-' }}
               </td>
             </tr>
           </tbody>
@@ -243,6 +244,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
   `
 })
 export class EtatsComponent implements OnInit, AfterViewInit {
+  seuilsStatut = inject(SeuilsStatutService);
   periodes: PeriodeSaisie[] = [];
   programmes: Programme[] = [];
   regions: Region[] = [];
@@ -363,10 +365,6 @@ export class EtatsComponent implements OnInit, AfterViewInit {
   }
 
   msdColor(msd: number): string {
-    if (msd === 0) return '#dc2626';
-    if (msd < 1) return '#ea580c';
-    if (msd < 2) return '#d97706';
-    if (msd <= 4) return '#16a34a';
-    return '#7c3aed';
+    return this.seuilsStatut.couleurMsd(msd);
   }
 }

@@ -52,7 +52,7 @@ public class NotificationService {
                             "Le plan " + plan.getId() + " a été validé. Veuillez exécuter le transfert de "
                                     + ligne.getQuantiteProposee() + " " + ligne.getProduit().getUnite()
                                     + " de " + ligne.getProduit().getNom()
-                                    + " vers " + ligne.getStructureCible().getNom())
+                                    + " vers " + ligne.getStructureCible().getNom() + ")")
             );
         });
     }
@@ -65,8 +65,8 @@ public class NotificationService {
                     if (ligne.getStructureSource() == null) return;
                     utilisateurRepo.findByStructureId(ligne.getStructureSource().getId()).forEach(user ->
                             creerNotification(plan, ligne, user, "RAPPEL_EXECUTION",
-                                    "Rappel: transfert en attente — " + ligne.getProduit().getNom()
-                                            + " vers " + ligne.getStructureCible().getNom())
+                                    "Rappel: transfert en attente (" + ligne.getProduit().getNom()
+                                            + " vers " + ligne.getStructureCible().getNom() + ")")
                     );
                 });
     }
@@ -75,13 +75,18 @@ public class NotificationService {
         if (ligne.getStructureSource() == null) return;
         utilisateurRepo.findByStructureId(ligne.getStructureSource().getId()).forEach(user ->
                 creerNotification(ligne.getPlan(), ligne, user, "ALERTE_RETARD",
-                        "Alerte retard: transfert non exécuté depuis plus de 14 jours — "
+                        "Alerte retard: transfert non exécuté depuis plus de 14 jours : "
                                 + ligne.getProduit().getNom())
         );
     }
 
     private void creerNotification(PlanReattribution plan, LignePlan ligne, Utilisateur destinataire,
                                     String type, String message) {
+        // Rappels et alertes planifiés : une seule notification non lue par ligne, type et personne
+        if (ligne != null && ligne.getId() != null
+                && notificationRepo.existsByDestinataireIdAndTypeAndLignePlanIdAndLuFalse(destinataire.getId(), type, ligne.getId())) {
+            return;
+        }
         Notification notif = new Notification();
         notif.setPlan(plan);
         notif.setLignePlan(ligne);

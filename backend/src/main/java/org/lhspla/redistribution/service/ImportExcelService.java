@@ -196,7 +196,7 @@ public class ImportExcelService {
             if (parsed.stockDisponible.compareTo(BigDecimal.ZERO) > 0 && parsed.expireDate == null) {
                 parsed.erreurs.add(new LigneErreurDTO(rowNum, parsed.produitCode,
                         "Date de péremption obligatoire si stock > 0",
-                        "Stock: " + parsed.stockDisponible + " — Date péremption: non renseignée"));
+                        "Stock: " + parsed.stockDisponible + ", date de péremption : non renseignée"));
             }
 
             // Date de péremption doit être postérieure à la date de saisie (= date système)
@@ -204,7 +204,7 @@ public class ImportExcelService {
             if (parsed.expireDate != null && !parsed.expireDate.isAfter(dateSaisie)) {
                 parsed.erreurs.add(new LigneErreurDTO(rowNum, parsed.produitCode,
                         "La date de péremption doit être postérieure à la date de saisie",
-                        "Date péremption: " + parsed.expireDate + " — Date de saisie: " + dateSaisie));
+                        "Date péremption: " + parsed.expireDate + ", date de saisie : " + dateSaisie));
             }
 
             rows.add(parsed);
@@ -217,12 +217,12 @@ public class ImportExcelService {
     private void validateTemplateSignature(Sheet sheet, Long programmeId) {
         Row header = sheet.getRow(0);
         if (header == null) throw BusinessException.badRequest(
-                "Fichier non conforme — utilisez le modèle téléchargé pour ce programme.");
+                "Fichier non conforme : utilisez le modèle téléchargé pour ce programme.");
         Cell sigCell = header.getCell(SIG_COL);
         String sig = sigCell != null ? getCellStringRaw(sigCell) : null;
         if (sig == null || !sig.startsWith(SIGNATURE_PREFIX)) {
             throw BusinessException.badRequest(
-                    "Fichier non conforme — utilisez le modèle téléchargé pour ce programme.");
+                    "Fichier non conforme : utilisez le modèle téléchargé pour ce programme.");
         }
         try {
             long fileProgrammeId = Long.parseLong(sig.substring(SIGNATURE_PREFIX.length()));
@@ -231,7 +231,7 @@ public class ImportExcelService {
                         "Le fichier ne correspond pas au programme sélectionné.");
             }
         } catch (NumberFormatException e) {
-            throw BusinessException.badRequest("Fichier non conforme — signature invalide.");
+            throw BusinessException.badRequest("Fichier non conforme : signature invalide.");
         }
     }
 

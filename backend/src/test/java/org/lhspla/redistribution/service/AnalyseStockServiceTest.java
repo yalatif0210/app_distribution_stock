@@ -5,19 +5,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.lhspla.redistribution.entity.ParametresStatut;
 import org.lhspla.redistribution.entity.SaisieStock;
+import org.lhspla.redistribution.repository.ParametresStatutRepository;
 import org.lhspla.redistribution.repository.PeriodeSaisieRepository;
 import org.lhspla.redistribution.repository.ProgrammeRepository;
 import org.lhspla.redistribution.repository.RegionRepository;
 import org.lhspla.redistribution.repository.SaisieStockRepository;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class AnalyseStockServiceTest {
@@ -26,16 +29,22 @@ class AnalyseStockServiceTest {
     @Mock private PeriodeSaisieRepository periodeRepo;
     @Mock private ProgrammeRepository programmeRepo;
     @Mock private RegionRepository regionRepo;
+    @Mock private ParametresStatutRepository parametresStatutRepo;
 
-    @InjectMocks private AnalyseStockService service;
+    private AnalyseStockService service;
+
+    private static final BigDecimal SEUIL_2 = new BigDecimal("2.0");
 
     @BeforeEach
     void injecterSeuils() {
-        // Les @Value ne sont pas injectés par Mockito — on les force via ReflectionTestUtils
-        ReflectionTestUtils.setField(service, "seuilTension",    1.0);
-        ReflectionTestUtils.setField(service, "seuilSurveiller", 2.0);
-        ReflectionTestUtils.setField(service, "seuilSurstock",   4.0);
-        ReflectionTestUtils.setField(service, "securiteMois",    1.0);
+        // Seuils de statut par défaut (migration V12) : 1 / 2 / 4 mois
+        ParametresStatut p = new ParametresStatut();
+        p.setSeuilTension(new BigDecimal("1.0"));
+        p.setSeuilSurveiller(new BigDecimal("2.0"));
+        p.setSeuilSurstock(new BigDecimal("4.0"));
+        lenient().when(parametresStatutRepo.findById(ParametresStatut.ID_UNIQUE)).thenReturn(Optional.of(p));
+        SeuilsStatutService seuils = new SeuilsStatutService(parametresStatutRepo, saisieStockRepo);
+        service = new AnalyseStockService(saisieStockRepo, periodeRepo, programmeRepo, regionRepo, seuils);
     }
 
     // ── calculerStatut ───────────────────────────────────────────────────────────
@@ -100,7 +109,7 @@ class AnalyseStockServiceTest {
         SaisieStock s = new SaisieStock();
         s.setStockDisponible(new BigDecimal("200"));
         s.setCmm(null);
-        assertThat(service.calculerExcedent(s)).isEqualByComparingTo("200");
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo("200");
     }
 
     @Test
@@ -108,7 +117,7 @@ class AnalyseStockServiceTest {
         SaisieStock s = new SaisieStock();
         s.setStockDisponible(new BigDecimal("75"));
         s.setCmm(BigDecimal.ZERO);
-        assertThat(service.calculerExcedent(s)).isEqualByComparingTo("75");
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo("75");
     }
 
     @Test
@@ -116,23 +125,71 @@ class AnalyseStockServiceTest {
         SaisieStock s = new SaisieStock();
         s.setStockDisponible(BigDecimal.ZERO);
         s.setCmm(null);
-        assertThat(service.calculerExcedent(s)).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    void excedent_positif_quand_stock_superieur_au_stock_securite() {
-        // securite = cmm * securiteMois * 2 = 10 * 1.0 * 2 = 20
-        // excedent = 50 - 20 = 30
+    void excedent_est_ce_qui_depasse_le_seuil_de_securite_regional() {
+        // seuil 2 mois : le site garde 10 × 2 = 20, il peut céder 50 − 20 = 30
         SaisieStock s = saisieAvecStockEtCmm("50", "10");
-        assertThat(service.calculerExcedent(s)).isEqualByComparingTo("30");
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo("30");
     }
 
     @Test
-    void excedent_zero_quand_stock_inferieur_au_stock_securite() {
-        // securite = 10 * 1.0 * 2 = 20
-        // stock 15 < securite 20 → excedent = 0
+    void site_bien_stocke_au_dessus_du_seuil_est_source() {
+        // MSD 3 (BIEN_STOCKE, pas SURSTOCK) avec un seuil régional de 2 : il cède 1 mois
+        SaisieStock s = saisieAvecStockEtCmm("30", "10");
+        assertThat(service.calculerStatut(s)).isEqualTo("BIEN_STOCKE");
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void le_seuil_de_la_region_change_la_quantite_cessible() {
+        SaisieStock s = saisieAvecStockEtCmm("30", "10");
+        assertThat(service.calculerExcedent(s, new BigDecimal("2.5"))).isEqualByComparingTo("5");
+        assertThat(service.calculerExcedent(s, new BigDecimal("3.0"))).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void excedent_zero_quand_stock_inferieur_au_seuil_de_securite() {
         SaisieStock s = saisieAvecStockEtCmm("15", "10");
-        assertThat(service.calculerExcedent(s)).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void site_en_tension_ne_cede_rien_meme_au_dessus_d_un_seuil_bas() {
+        // MSD 0,8 (TENSION) avec un seuil de 0,5 : une cible ne cède pas son stock
+        SaisieStock s = saisieAvecStockEtCmm("8", "10");
+        assertThat(service.calculerExcedent(s, new BigDecimal("0.5"))).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ── Exception péremption ─────────────────────────────────────────────────────
+
+    @Test
+    void peremption_permet_de_descendre_sous_le_seuil() {
+        // 30 en stock, 10 consommés par mois, lot périmé dans 60 jours (2 mois) :
+        // 10 unités périmeront. Au-dessus du seuil de 2,5 il n'y aurait que 5 à céder.
+        SaisieStock s = saisieAvecStockEtCmm("30", "10");
+        s.setExpireDate(LocalDate.now().plusDays(60));
+        BigDecimal seuil = new BigDecimal("2.5");
+        assertThat(service.calculerExcedent(s, seuil)).isEqualByComparingTo("10");
+        assertThat(service.cedeParExceptionPeremption(s, seuil)).isTrue();
+    }
+
+    @Test
+    void peremption_ne_s_applique_pas_si_le_seuil_laisse_ceder_davantage() {
+        SaisieStock s = saisieAvecStockEtCmm("30", "10");
+        s.setExpireDate(LocalDate.now().plusDays(60));
+        assertThat(service.calculerExcedent(s, new BigDecimal("1.0"))).isEqualByComparingTo("20");
+        assertThat(service.cedeParExceptionPeremption(s, new BigDecimal("1.0"))).isFalse();
+    }
+
+    @Test
+    void site_en_tension_cede_seulement_sa_part_perimable() {
+        // MSD 0,9 (TENSION), lot périmé dans 15 jours : 9 − 10 × 0,5 = 4 unités périmeront
+        SaisieStock s = saisieAvecStockEtCmm("9", "10");
+        s.setExpireDate(LocalDate.now().plusDays(15));
+        assertThat(service.calculerExcedent(s, SEUIL_2)).isEqualByComparingTo("4");
     }
 
     // ── calculerBesoin ───────────────────────────────────────────────────────────

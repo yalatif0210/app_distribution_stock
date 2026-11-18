@@ -37,7 +37,7 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
   template: `
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
       <div>
-        <h1>Administration — Référentiel</h1>
+        <h1>Administration : Référentiel</h1>
         <p>Gérez les données de référence de l'application</p>
       </div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
@@ -47,7 +47,7 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
             {{ importingGeo ? 'Import en cours…' : 'Import Géo (Excel)' }}
           </button>
           <span style="font-size:.7rem;color:var(--text-secondary);"><code>région&nbsp;|&nbsp;district&nbsp;|&nbsp;structure&nbsp;|&nbsp;code*&nbsp;|&nbsp;type*</code></span>
-          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel — types&nbsp;:&nbsp;HOPITAL, CENTRE_SANTE, DISPENSAIRE, DEPOT</span>
+          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel, types&nbsp;:&nbsp;HOPITAL, CENTRE_SANTE, DISPENSAIRE, DEPOT</span>
         </div>
         <input #geoInput type="file" accept=".xlsx,.xls" hidden (change)="onGeoFile($event)">
 
@@ -57,7 +57,7 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
             {{ importingCatalogue ? 'Import en cours…' : 'Import Catalogue (Excel)' }}
           </button>
           <span style="font-size:.7rem;color:var(--text-secondary);"><code>programme&nbsp;|&nbsp;code_prog*&nbsp;|&nbsp;produit&nbsp;|&nbsp;code_prod*&nbsp;|&nbsp;unité*</code></span>
-          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel — auto-généré si absent</span>
+          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel, auto-généré si absent</span>
         </div>
         <input #catalogueInput type="file" accept=".xlsx,.xls" hidden (change)="onCatalogueFile($event)">
       </div>
@@ -330,7 +330,7 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
               <ng-container matColumnDef="username"><th mat-header-cell *matHeaderCellDef>Username</th><td mat-cell *matCellDef="let u" style="font-weight:600;">{{ u.username }}</td></ng-container>
               <ng-container matColumnDef="nom"><th mat-header-cell *matHeaderCellDef>Nom</th><td mat-cell *matCellDef="let u">{{ u.prenom }} {{ u.nom }}</td></ng-container>
               <ng-container matColumnDef="role"><th mat-header-cell *matHeaderCellDef>Rôle</th><td mat-cell *matCellDef="let u"><span class="badge badge-ouverte" style="font-size:.65rem;">{{ u.roleNom }}</span></td></ng-container>
-              <ng-container matColumnDef="perimetre"><th mat-header-cell *matHeaderCellDef>Périmètre</th><td mat-cell *matCellDef="let u" style="font-size:.8rem;">{{ u.structureNom ?? u.regionNom ?? '—' }}</td></ng-container>
+              <ng-container matColumnDef="perimetre"><th mat-header-cell *matHeaderCellDef>Périmètre</th><td mat-cell *matCellDef="let u" style="font-size:.8rem;">{{ u.structureNom ?? u.regionNom ?? '-' }}</td></ng-container>
               <ng-container matColumnDef="actif"><th mat-header-cell *matHeaderCellDef>Actif</th><td mat-cell *matCellDef="let u"><span [class]="u.actif ? 'badge badge-normal' : 'badge badge-fermee'" style="font-size:.65rem;">{{ u.actif ? 'Actif' : 'Inactif' }}</span></td></ng-container>
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef style="text-align:right;">Actions</th>
@@ -441,7 +441,7 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
           <mat-form-field appearance="fill" style="width:100%;">
             <mat-label>Programme</mat-label>
             <mat-select [(ngModel)]="form['programmeId']" required>
-              <mat-option *ngFor="let p of programmesDS.data" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+              <mat-option *ngFor="let p of programmesDS.data" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
             </mat-select>
           </mat-form-field>
         </ng-container>
@@ -478,31 +478,35 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
               <mat-option *ngFor="let r of roles" [value]="r.id">{{ r.name }}</mat-option>
             </mat-select>
           </mat-form-field>
-          <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-            <mat-label>Régions couvertes</mat-label>
-            <mat-select [(ngModel)]="form['supervisedRegionIds']" multiple (ngModelChange)="onRegionChange($event)">
-              <mat-option [value]="0" style="font-style:italic;color:var(--accent-color);">— Toutes les régions —</mat-option>
+          <!-- Rattachement selon le rôle : une structure, une région, ou plusieurs régions -->
+          <mat-form-field *ngIf="roleName() === 'GESTIONNAIRE'" appearance="fill" style="width:100%;margin-bottom:.5rem;">
+            <mat-label>Structure gérée</mat-label>
+            <mat-select [(ngModel)]="form['structureId']" required (openedChange)="ouvertureRechercheSite($event, rechSite)">
+              <div style="position:sticky;top:0;z-index:1;background:#fff;padding:.5rem .75rem;border-bottom:1px solid #e5e7eb;">
+                <input #rechSite type="text" placeholder="Rechercher un site..." autocomplete="off"
+                       style="width:100%;box-sizing:border-box;padding:.4rem .5rem;border:1px solid #d1d5db;border-radius:4px;font:inherit;"
+                       [value]="rechercheSite" (input)="rechercheSite = rechSite.value"
+                       (keydown)="$event.stopPropagation()" (click)="$event.stopPropagation()">
+              </div>
+              <mat-option *ngFor="let s of filtrerSites(structuresDS.data, rechercheSite, form['structureId'])" [value]="s.id">{{ s.code }} - {{ s.nom }} ({{ s.regionNom }})</mat-option>
+              <mat-option *ngIf="filtrerSites(structuresDS.data, rechercheSite, form['structureId']).length === 0" disabled>Aucun site trouvé</mat-option>
+            </mat-select>
+            <mat-hint>La région du gestionnaire est celle de sa structure.</mat-hint>
+          </mat-form-field>
+          <mat-form-field *ngIf="roleName() === 'PHARMACIEN_REGION'" appearance="fill" style="width:100%;margin-bottom:.5rem;">
+            <mat-label>Région couverte</mat-label>
+            <mat-select [(ngModel)]="form['regionId']" required>
               <mat-option *ngFor="let r of regionsDS.data" [value]="r.id">{{ r.nom }}</mat-option>
             </mat-select>
+            <mat-hint>Le pharmacien voit tous les sites de sa région.</mat-hint>
           </mat-form-field>
-          <ng-container *ngIf="(form['supervisedRegionIds'] ?? []).length > 0">
-            <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-              <mat-label>Districts couverts</mat-label>
-              <mat-select [(ngModel)]="form['supervisedDistrictIds']" multiple (ngModelChange)="onDistrictChange($event)">
-                <mat-option [value]="0" style="font-style:italic;color:var(--accent-color);">— Tous les districts —</mat-option>
-                <mat-option *ngFor="let d of filteredDistricts" [value]="d.id">{{ d.nom }}</mat-option>
-              </mat-select>
-            </mat-form-field>
-          </ng-container>
-          <ng-container *ngIf="(form['supervisedDistrictIds'] ?? []).length > 0">
-            <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-              <mat-label>Sites couverts</mat-label>
-              <mat-select [(ngModel)]="form['supervisedStructureIds']" multiple (ngModelChange)="onStructureChange($event)">
-                <mat-option [value]="0" style="font-style:italic;color:var(--accent-color);">— Tous les sites —</mat-option>
-                <mat-option *ngFor="let s of filteredStructures" [value]="s.id">{{ s.code }} — {{ s.nom }}</mat-option>
-              </mat-select>
-            </mat-form-field>
-          </ng-container>
+          <mat-form-field *ngIf="roleName() === 'SUPERVISEUR'" appearance="fill" style="width:100%;margin-bottom:.5rem;">
+            <mat-label>Régions supervisées</mat-label>
+            <mat-select [(ngModel)]="form['supervisedRegionIds']" multiple required>
+              <mat-option *ngFor="let r of regionsDS.data" [value]="r.id">{{ r.nom }}</mat-option>
+            </mat-select>
+            <mat-hint>Lecture seule sur tous les sites de ces régions.</mat-hint>
+          </mat-form-field>
         </ng-container>
 
       </mat-dialog-content>
@@ -546,6 +550,14 @@ export class ReferentielComponent implements OnInit, AfterViewInit {
   dialogType = '';
   dialogTitle = '';
   form: Record<string, any> = {};
+  rechercheSite = '';
+  readonly filtrerSites = filtrerSites;
+
+  /** À l'ouverture de la liste des sites : recherche vidée et curseur placé dans le champ. */
+  ouvertureRechercheSite(ouvert: boolean, champ: HTMLInputElement): void {
+    this.rechercheSite = '';
+    if (ouvert) setTimeout(() => champ.focus());
+  }
   saving = false;
   importingGeo = false;
   importingCatalogue = false;
@@ -621,14 +633,9 @@ export class ReferentielComponent implements OnInit, AfterViewInit {
 
   openDialog(type: string, item?: any): void {
     this.dialogType  = type;
-    this.dialogTitle = item ? `Modifier — ${type}` : `Nouveau — ${type}`;
+    this.dialogTitle = item ? `Modifier : ${type}` : `Nouveau : ${type}`;
     if (type === 'utilisateur') {
-      this.form = {
-        supervisedRegionIds: [],
-        supervisedDistrictIds: [],
-        supervisedStructureIds: [],
-        ...(item ?? {})
-      };
+      this.form = { supervisedRegionIds: [], ...(item ?? {}) };
     } else {
       this.form = item ? { ...item } : {};
     }
@@ -657,14 +664,7 @@ export class ReferentielComponent implements OnInit, AfterViewInit {
         obs$ = f['id'] ? this.adminService.updateProduit(f['id'], f as any) : this.adminService.createProduit(f as any);
         break;
       case 'utilisateur': {
-        const payload: any = { ...f };
-        const roleName = this.roleName();
-        // Dériver les champs legacy pour que le contrôle d'accès backend fonctionne
-        if (roleName === 'GESTIONNAIRE') {
-          payload['structureId'] = (f['supervisedStructureIds'] as number[])?.[0] ?? null;
-        } else if (roleName === 'PHARMACIEN_REGION') {
-          payload['regionId'] = (f['supervisedRegionIds'] as number[])?.[0] ?? null;
-        }
+        const payload = utilisateurPayload(f, this.roleName());
         obs$ = f['id'] ? this.adminService.updateUtilisateur(f['id'], payload) : this.adminService.createUtilisateur(payload);
         break;
       }
@@ -732,63 +732,37 @@ export class ReferentielComponent implements OnInit, AfterViewInit {
     });
   }
 
-  get filteredDistricts(): District[] {
-    const sel: number[] = this.form['supervisedRegionIds'] ?? [];
-    return this.districtsDS.data.filter(d => sel.includes(d.regionId));
-  }
-
-  get filteredStructures(): Structure[] {
-    const sel: number[] = this.form['supervisedDistrictIds'] ?? [];
-    return this.structuresDS.data.filter(s => sel.includes(s.districtId));
-  }
-
-  onRegionChange(val: number[]): void {
-    const regions: number[] = val.includes(0)
-      ? this.regionsDS.data.map(r => r.id)
-      : val.filter(v => v !== 0);
-
-    // Différer pour laisser le cycle de détection de changements compléter d'abord
-    setTimeout(() => {
-      this.form['supervisedRegionIds'] = regions;
-
-      const validDistrictIds = new Set(
-        this.districtsDS.data.filter(d => regions.includes(d.regionId)).map(d => d.id)
-      );
-      this.form['supervisedDistrictIds'] =
-        ((this.form['supervisedDistrictIds'] as number[]) ?? []).filter(id => validDistrictIds.has(id));
-
-      const selDistricts: number[] = this.form['supervisedDistrictIds'];
-      const validStructureIds = new Set(
-        this.structuresDS.data.filter(s => selDistricts.includes(s.districtId)).map(s => s.id)
-      );
-      this.form['supervisedStructureIds'] =
-        ((this.form['supervisedStructureIds'] as number[]) ?? []).filter(id => validStructureIds.has(id));
-    });
-  }
-
-  onDistrictChange(val: number[]): void {
-    const districts: number[] = val.includes(0)
-      ? this.filteredDistricts.map(d => d.id)
-      : val.filter(v => v !== 0);
-
-    setTimeout(() => {
-      this.form['supervisedDistrictIds'] = districts;
-
-      const validStructureIds = new Set(
-        this.structuresDS.data.filter(s => districts.includes(s.districtId)).map(s => s.id)
-      );
-      this.form['supervisedStructureIds'] =
-        ((this.form['supervisedStructureIds'] as number[]) ?? []).filter(id => validStructureIds.has(id));
-    });
-  }
-
-  onStructureChange(val: number[]): void {
-    if (!val.includes(0)) return;
-    const all = this.filteredStructures.map(s => s.id);
-    setTimeout(() => { this.form['supervisedStructureIds'] = all; });
-  }
-
-  private roleName(): string | undefined {
+  roleName(): string | undefined {
     return this.roles.find(r => r.id === this.form['roleId'])?.name;
   }
+}
+
+/**
+ * Rattachement envoyé au serveur selon le rôle : une structure (GESTIONNAIRE),
+ * une région (PHARMACIEN_REGION) ou plusieurs régions (SUPERVISEUR). Les autres
+ * champs sont vidés pour qu'un changement de rôle ne laisse pas d'ancien rattachement.
+ */
+/** Sans accents ni majuscules, pour une recherche tolérante ("ecole" trouve "École"). */
+function normaliser(texte: string | null | undefined): string {
+  return (texte ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+/**
+ * Sites dont le nom (ou le code) contient la recherche. Le site déjà choisi reste
+ * toujours dans la liste, sinon la liste déroulante afficherait un champ vide.
+ */
+export function filtrerSites<T extends { id: number; nom: string; code?: string }>(
+  sites: T[], recherche: string, idChoisi: number | null | undefined): T[] {
+  const r = normaliser(recherche);
+  if (!r) return sites;
+  return sites.filter(s => s.id === idChoisi || normaliser(s.nom).includes(r) || normaliser(s.code).includes(r));
+}
+
+export function utilisateurPayload(f: any, roleName: string | undefined): any {
+  return {
+    ...f,
+    structureId: roleName === 'GESTIONNAIRE' ? (f['structureId'] ?? null) : null,
+    regionId: roleName === 'PHARMACIEN_REGION' ? (f['regionId'] ?? null) : null,
+    supervisedRegionIds: roleName === 'SUPERVISEUR' ? (f['supervisedRegionIds'] ?? []) : [],
+  };
 }

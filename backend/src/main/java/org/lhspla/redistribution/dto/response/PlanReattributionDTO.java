@@ -25,4 +25,8 @@ public class PlanReattributionDTO {
     private int nbLignes;
     private int nbLignesExecutees;
     private int progression;
+    /** Réponse de génération seulement : l'IA était demandée mais le plan a basculé en répartition manuelle. */
+    private boolean basculeManuel;
+    /** Pourquoi la bascule a eu lieu, à afficher au pharmacien. */
+    private String motifBascule;
 }

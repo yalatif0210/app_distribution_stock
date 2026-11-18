@@ -18,8 +18,9 @@ import { PlanService } from '../../../core/services/plan.service';
 import { StockService } from '../../../core/services/stock.service';
 import { ReferentielService } from '../../../core/services/referentiel.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { RepartitionManuelleComponent } from './repartition-manuelle.component';
 import {
-  AnalyseResultat, AnalyseProduit, StructureAnalyse,
+  AnalyseResultat, AnalyseProduit, StructureAnalyse, StockSourceInfo,
   Programme, PeriodeSaisie, PlanReattribution, LignePlan
 } from '../../../core/models/models';
 
@@ -27,11 +28,29 @@ import {
   selector: 'app-generation',
   standalone: true,
   imports: [
+    RepartitionManuelleComponent,
     CommonModule, DatePipe, FormsModule, RouterLink,
     MatCardModule, MatFormFieldModule, MatSelectModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTableModule, MatPaginatorModule, MatSortModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatTooltipModule
   ],
+  styles: [`
+    .mode-titre { font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-secondary); margin:.25rem 0 .5rem; }
+    .modes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.75rem; margin-bottom:1rem; }
+    .mode { display:flex; gap:.75rem; align-items:flex-start; text-align:left; padding:.875rem 1rem; cursor:pointer;
+            border:2px solid var(--border-color); border-radius:.5rem; background:var(--surface-color, #fff);
+            font:inherit; color:var(--text-primary); transition:border-color .15s, background .15s; }
+    .mode mat-icon { color:var(--text-secondary); flex-shrink:0; }
+    .mode strong { display:block; font-size:.92rem; margin-bottom:.2rem; }
+    .mode-texte { display:block; font-size:.8rem; line-height:1.45; color:var(--text-secondary); }
+    .mode-indispo { display:block; margin-top:.35rem; font-size:.75rem; font-weight:600; color:#b45309; }
+    .mode:hover:not(:disabled) { border-color:rgba(79,70,229,.45); }
+    .mode.actif { border-color:var(--accent-color); background:rgba(79,70,229,.05); }
+    .mode.actif mat-icon { color:var(--accent-color); }
+    .mode:disabled { cursor:not-allowed; opacity:.6; }
+    .mode:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+    @media (max-width: 700px) { .modes { grid-template-columns:1fr; } }
+  `],
   template: `
     <!-- ──────────────────────────────── HEADER ──────────────────────────────── -->
     <div class="page-header">
@@ -59,7 +78,7 @@ import {
             <mat-label>Programme</mat-label>
             <mat-select [(ngModel)]="programmeId">
               <mat-option [value]="null">Tous les programmes</mat-option>
-              <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+              <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -71,16 +90,77 @@ import {
           <mat-label>Notes (optionnel)</mat-label>
           <textarea matInput [(ngModel)]="notes" rows="2"></textarea>
         </mat-form-field>
+        <div class="mode-titre">Mode de construction du plan</div>
+        <div class="modes" role="radiogroup" aria-label="Mode de construction du plan">
+          <button type="button" class="mode" role="radio" [attr.aria-checked]="mode === 'IA'"
+                  [class.actif]="mode === 'IA'" [disabled]="loading" (click)="mode = 'IA'">
+            <mat-icon>auto_awesome</mat-icon>
+            <span>
+              <strong>Analyse IA</strong>
+              <span class="mode-texte">L'IA analyse les stocks et propose un plan complet. Vous le révisez ligne par ligne avant de le valider.</span>
+              <span *ngIf="!iaDisponible" class="mode-indispo">Non configurée sur ce serveur : le plan passera en répartition manuelle.</span>
+            </span>
+          </button>
+          <button type="button" class="mode" role="radio" [attr.aria-checked]="mode === 'MANUEL'"
+                  [class.actif]="mode === 'MANUEL'" [disabled]="loading" (click)="mode = 'MANUEL'">
+            <mat-icon>tune</mat-icon>
+            <span>
+              <strong>Répartition manuelle</strong>
+              <span class="mode-texte">Vous répartissez vous-même, produit par produit : sites en tension à gauche, sources à droite.</span>
+            </span>
+          </button>
+        </div>
         <button mat-raised-button color="primary" (click)="generer()" [disabled]="!periodeId || !regionId || loading">
           <mat-spinner *ngIf="loading" diameter="18" style="display:inline-block;margin-right:.4rem;"></mat-spinner>
-          <mat-icon *ngIf="!loading">bolt</mat-icon>
-          Analyser et générer
+          <mat-icon *ngIf="!loading">{{ mode === 'IA' ? 'auto_awesome' : 'tune' }}</mat-icon>
+          {{ mode === 'IA' ? (loading ? 'Analyse IA en cours…' : "Lancer l'analyse IA") : 'Ouvrir la répartition manuelle' }}
         </button>
         <div *ngIf="error" style="margin-top:.75rem;padding:.75rem 1rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:.375rem;color:#b91c1c;font-size:.875rem;display:flex;gap:.5rem;align-items:center;">
           <mat-icon style="font-size:18px;width:18px;height:18px;">warning</mat-icon>{{ error }}
         </div>
+        <div *ngIf="brouillonExistant" style="margin-top:.75rem;padding:.875rem 1rem;background:rgba(79,70,229,.06);border:1px solid rgba(79,70,229,.25);border-radius:.375rem;font-size:.875rem;">
+          <div style="display:flex;gap:.5rem;align-items:flex-start;margin-bottom:.75rem;">
+            <mat-icon style="font-size:18px;width:18px;height:18px;color:var(--accent-color);flex-shrink:0;">edit_note</mat-icon>
+            <div>
+              Un plan brouillon existe déjà pour cette période et ce programme
+              (n° {{ brouillonExistant.id }}, créé le {{ brouillonExistant.dateGeneration | date:'dd/MM/yyyy à HH:mm' }},
+              {{ brouillonExistant.lignes?.length ?? 0 }} ligne(s),
+              {{ brouillonExistant.genereParlA ? "généré par l'IA" : 'répartition manuelle' }}).
+              <div style="color:var(--text-secondary);font-size:.8rem;margin-top:.2rem;">
+                Le reprendre l'ouvre tel quel. Le remplacer supprime ce brouillon et ses lignes, puis crée un nouveau plan
+                en mode « {{ mode === 'IA' ? 'analyse IA' : 'répartition manuelle' }} ».
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button mat-raised-button color="primary" (click)="reprendreBrouillon()">
+              <mat-icon>play_arrow</mat-icon> Reprendre le brouillon
+            </button>
+            <button mat-stroked-button color="warn" (click)="remplacerBrouillon()">
+              <mat-icon>autorenew</mat-icon> Le remplacer
+            </button>
+            <button mat-button (click)="brouillonExistant = null">Annuler</button>
+          </div>
+        </div>
       </mat-card-content>
     </mat-card>
+
+    <!-- Choix à « Nouveau plan » quand le plan affiché est un brouillon -->
+    <div *ngIf="choixNouveau && plan" style="margin-bottom:1.25rem;padding:.875rem 1rem;background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.35);border-radius:.5rem;font-size:.875rem;color:#78350f;">
+      <div style="margin-bottom:.75rem;">
+        Que faire du brouillon n° {{ plan.id }} ({{ plan.lignes?.length ?? 0 }} ligne(s)) ?
+        Si vous le gardez, il sera proposé à la reprise lors de la prochaine génération sur cette période et ce programme.
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button mat-raised-button color="primary" (click)="nouveauEnGardant()">
+          <mat-icon>bookmark</mat-icon> Le garder
+        </button>
+        <button mat-stroked-button color="warn" (click)="nouveauEnSupprimant()" [disabled]="suppressionEnCours">
+          <mat-icon>delete</mat-icon> Le supprimer
+        </button>
+        <button mat-button (click)="choixNouveau = false">Annuler</button>
+      </div>
+    </div>
 
     <!-- ══════════════════════ MODE IA (plan.genereParlA = true) ═════════════════ -->
     <ng-container *ngIf="plan && plan.genereParlA">
@@ -93,9 +173,9 @@ import {
           {{ plan.statut === 'BROUILLON' ? 'check_circle' : plan.statut === 'CLOTURE' ? 'verified' : 'task_alt' }}
         </mat-icon>
         <span [style.color]="plan.statut === 'BROUILLON' ? '#15803d' : plan.statut === 'CLOTURE' ? '#374151' : '#4338ca'">
-          Plan généré automatiquement — IA (ID&nbsp;:&nbsp;{{ plan.id }})
+          Plan généré automatiquement par l'IA (ID&nbsp;:&nbsp;{{ plan.id }})
           <span *ngIf="plan.statut === 'BROUILLON'"> · Révision des mouvements</span>
-          <strong *ngIf="plan.statut === 'VALIDE'"> · Validé — enregistrez les exécutions ligne par ligne</strong>
+          <strong *ngIf="plan.statut === 'VALIDE'"> · Validé : enregistrez les exécutions ligne par ligne</strong>
           <strong *ngIf="plan.statut === 'CLOTURE'"> · Clôturé</strong>
         </span>
         <span style="background:rgba(79,70,229,.12);color:var(--accent-color);font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:.25rem;">IA</span>
@@ -125,7 +205,7 @@ import {
         <mat-card-content style="padding:.875rem 1rem;">
           <div style="font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:.625rem;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:.4rem;">
             <mat-icon style="font-size:16px;width:16px;height:16px;">info</mat-icon>
-            Diagnostic — produits sans redistribution possible
+            Diagnostic : produits sans redistribution possible
           </div>
           <div *ngFor="let p of produitsDiagnostique; let last = last"
                [style.border-bottom]="last ? 'none' : '1px solid rgba(59,130,246,.1)'"
@@ -144,7 +224,7 @@ import {
         <mat-card-header style="padding:.75rem 1rem .4rem;background:rgba(99,102,241,.05);">
           <mat-card-title style="font-size:.95rem;color:#4338ca;display:flex;align-items:center;gap:.5rem;">
             <mat-icon style="color:var(--accent-color);">edit</mat-icon>
-            Modifier la ligne — {{ editingLigne.produitNom }}
+            Modifier la ligne : {{ editingLigne.produitNom }}
           </mat-card-title>
         </mat-card-header>
         <mat-card-content style="padding:.875rem 1rem;">
@@ -172,19 +252,24 @@ import {
             <strong style="color:#15803d;font-family:monospace;">{{ editForm.stockNet | number:'1.0-0' }}</strong>
             <span style="color:var(--text-secondary);">(brut : {{ editForm.stockBrut | number:'1.0-0' }} − allocations : {{ (editForm.stockBrut! - editForm.stockNet!) | number:'1.0-0' }})</span>
           </div>
+          <div *ngIf="editForm.cessible" style="font-size:.8rem;color:#475569;margin:-.4rem 0 .75rem;line-height:1.45;">
+            Cessible au maximum : <strong style="font-family:monospace;color:#0f172a;">{{ editForm.cessible.quantiteMaxCessible | number:'1.0-0' }}</strong>
+            <span *ngIf="!editForm.cessible.exceptionPeremption">(la source garde au moins {{ editForm.cessible.seuilSecuriteMsd }} mois de stock, seuil de sécurité de la région)</span>
+            <span *ngIf="editForm.cessible.exceptionPeremption" style="color:#b45309;">(exception péremption : la part du lot qui périmera avant d'être consommée peut être cédée, même sous le seuil de {{ editForm.cessible.seuilSecuriteMsd }} mois)</span>
+          </div>
 
           <!-- Quantité -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:.75rem;">
             <mat-form-field appearance="fill" style="width:100%;">
               <mat-label>Quantité</mat-label>
               <input matInput type="number" min="1" [(ngModel)]="editForm.quantite">
-              <mat-hint *ngIf="editForm.stockNet !== null">Max : {{ editForm.stockNet | number:'1.0-0' }}</mat-hint>
+              <mat-hint *ngIf="editForm.cessible">Max cessible : {{ editForm.cessible.quantiteMaxCessible | number:'1.0-0' }}</mat-hint>
               <mat-error *ngIf="editQuantiteDepasse">Dépasse le stock net</mat-error>
             </mat-form-field>
             <div style="padding:.5rem .75rem;background:#f8fafc;border:1px solid var(--border-color);border-radius:.375rem;font-size:.82rem;display:flex;align-items:center;gap:.5rem;">
               <mat-icon style="font-size:15px;width:15px;height:15px;color:var(--text-secondary);">event</mat-icon>
               <span>Péremption FEFO : </span>
-              <strong style="font-family:monospace;">{{ editingLigne.expireDate ? (editingLigne.expireDate | date:'dd/MM/yyyy') : '—' }}</strong>
+              <strong style="font-family:monospace;">{{ editingLigne.expireDate ? (editingLigne.expireDate | date:'dd/MM/yyyy') : '-' }}</strong>
             </div>
           </div>
 
@@ -197,7 +282,7 @@ import {
           <!-- Alerte dépassement -->
           <div *ngIf="editQuantiteDepasse" style="margin-bottom:.75rem;padding:.5rem .75rem;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:.375rem;font-size:.82rem;color:#b91c1c;">
             <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">block</mat-icon>
-            Quantité supérieure au stock disponible net — modification bloquée.
+            Quantité supérieure au stock disponible net : modification bloquée.
           </div>
 
           <!-- Erreur -->
@@ -225,7 +310,7 @@ import {
         <mat-card-header style="padding:.75rem 1rem .4rem;background:rgba(22,163,74,.05);">
           <mat-card-title style="font-size:.95rem;color:#15803d;display:flex;align-items:center;gap:.5rem;">
             <mat-icon style="color:#22c55e;">play_circle</mat-icon>
-            Enregistrer l'exécution — {{ executingLigne.produitNom }}
+            Enregistrer l'exécution : {{ executingLigne.produitNom }}
           </mat-card-title>
         </mat-card-header>
         <mat-card-content style="padding:.875rem 1rem;">
@@ -335,14 +420,14 @@ import {
             <ng-container matColumnDef="qtExec">
               <th mat-header-cell *matHeaderCellDef style="text-align:right;">Qté exécutée</th>
               <td mat-cell *matCellDef="let l" style="text-align:right;font-family:monospace;color:#16a34a;">
-                {{ l.quantiteExecutee != null ? (l.quantiteExecutee | number:'1.0-0') : '—' }}
+                {{ l.quantiteExecutee != null ? (l.quantiteExecutee | number:'1.0-0') : '-' }}
               </td>
             </ng-container>
 
             <ng-container matColumnDef="expireDate">
               <th mat-header-cell *matHeaderCellDef>Péremption (FEFO)</th>
               <td mat-cell *matCellDef="let l" style="font-size:.82rem;color:var(--text-secondary);">
-                {{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '—' }}
+                {{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '-' }}
               </td>
             </ng-container>
 
@@ -382,7 +467,7 @@ import {
                 <!-- Actions VALIDE : exécuter + supprimer si pas encore exécuté -->
                 <ng-container *ngIf="plan!.statut === 'VALIDE' || plan!.statut === 'EN_COURS'">
                   <button mat-icon-button style="color:#16a34a;width:34px;height:34px;"
-                    *ngIf="l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && (auth.isPharmacienRegion() || auth.isSuperviseur())"
+                    *ngIf="l.statut !== 'EXECUTE' && l.statut !== 'ANNULE' && auth.isPharmacienRegion()"
                     (click)="startExecute(l)"
                     [disabled]="!!executingLigne || !!editingLigne"
                     matTooltip="Enregistrer l'exécution">
@@ -396,7 +481,7 @@ import {
                     <mat-icon style="font-size:16px;width:16px;height:16px;vertical-align:middle;">timelapse</mat-icon>
                   </span>
                   <button mat-icon-button color="warn" style="width:34px;height:34px;"
-                    *ngIf="l.statut !== 'EXECUTE' && (auth.isSuperviseur() || auth.isAdmin())"
+                    *ngIf="l.statut !== 'EXECUTE' && auth.isAdmin()"
                     (click)="supprimerLigne(l)"
                     [disabled]="!!executingLigne || !!editingLigne"
                     matTooltip="Supprimer cette ligne (superviseur)">
@@ -437,14 +522,27 @@ import {
     <!-- ══════════════════ MODE MANUEL (plan.genereParlA = false) ════════════════ -->
     <ng-container *ngIf="plan && !plan.genereParlA">
 
+      <!-- L'IA était demandée : le pharmacien est prévenu de la bascule -->
+      <div *ngIf="motifBascule" role="status" style="display:flex;align-items:flex-start;gap:.75rem;padding:.875rem 1.25rem;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.3);border-radius:.5rem;margin-bottom:1rem;color:#1e3a8a;font-size:.85rem;line-height:1.5;">
+        <mat-icon style="color:#2563eb;flex-shrink:0;">info</mat-icon>
+        <div style="flex:1;">
+          <strong>Vous aviez choisi l'analyse IA.</strong> {{ motifBascule }}
+          Le plan est passé en répartition manuelle : vous pouvez le construire ci-dessous.
+        </div>
+        <button mat-icon-button (click)="motifBascule = null" aria-label="Fermer ce message" style="margin:-.5rem -.75rem -.5rem 0;">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
       <!-- Bandeau avertissement -->
       <div style="display:flex;align-items:flex-start;gap:.875rem;padding:1rem 1.25rem;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.35);border-radius:.5rem;margin-bottom:1.25rem;color:#92400e;">
-        <mat-icon style="color:#d97706;flex-shrink:0;margin-top:.05rem;">warning_amber</mat-icon>
+        <mat-icon style="color:#d97706;flex-shrink:0;margin-top:.05rem;">tune</mat-icon>
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:.9rem;margin-bottom:.2rem;">Construction manuelle du plan</div>
+          <div style="font-weight:700;font-size:.9rem;margin-bottom:.2rem;">Répartition manuelle du plan (n° {{ plan.id }})</div>
           <div style="font-size:.82rem;line-height:1.5;">
-            L'IA n'est pas disponible dans cet environnement. Construisez le plan ligne par ligne ci-dessous.
-            Les produits en <strong>tension ou rupture</strong> apparaissent en cible ; les sites en <strong>surstock ou stock dormant</strong> apparaissent en source.
+            Choisissez un produit, puis pour chaque site en tension
+            une quantité et une source : chaque mouvement est enregistré automatiquement.
+            Les sources sont les sites dont le MSD dépasse le <strong>seuil de sécurité de la région</strong>, les stocks dormants, et les lots qui périmeront avant d'être consommés.
           </div>
         </div>
         <button mat-stroked-button (click)="reinitialiser()" style="font-size:.75rem;border-color:rgba(217,119,6,.4);color:#92400e;">
@@ -481,7 +579,7 @@ import {
             <mat-card-content style="padding:.875rem 1rem;">
               <div style="font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:.625rem;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:.4rem;">
                 <mat-icon style="font-size:16px;width:16px;height:16px;">info</mat-icon>
-                Diagnostic — produits sans redistribution possible
+                Diagnostic : produits sans redistribution possible
               </div>
               <div *ngFor="let p of produitsDiagnostique; let last = last"
                    [style.border-bottom]="last ? 'none' : '1px solid rgba(59,130,246,.1)'"
@@ -501,116 +599,15 @@ import {
             Aucun produit en tension ou rupture dans cette région pour ce programme.
           </mat-card>
 
-          <!-- Formulaire d'ajout de ligne -->
-          <mat-card *ngIf="produitsEnTension.length > 0" style="margin-bottom:1.25rem;border:2px solid rgba(217,119,6,.25);">
-            <mat-card-header style="padding:.875rem 1rem .5rem;background:rgba(217,119,6,.05);">
-              <mat-card-title style="font-size:.95rem;color:#92400e;display:flex;align-items:center;gap:.5rem;">
-                <mat-icon style="color:#d97706;">add_circle_outline</mat-icon>
-                Ajouter une ligne au plan
-              </mat-card-title>
-            </mat-card-header>
-            <mat-card-content style="padding:.875rem 1rem;">
-
-              <!-- Étape 1 — Produit -->
-              <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">1. Produit en tension</div>
-              <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-                <mat-label>Produit</mat-label>
-                <mat-select [(ngModel)]="nvl.produitId" (ngModelChange)="onProduitChange()">
-                  <mat-option [value]="null">-- Sélectionner --</mat-option>
-                  <mat-option *ngFor="let p of produitsEnTension" [value]="p.produitId">
-                    {{ p.produitNom }}
-                    <span style="color:var(--text-secondary);font-size:.8rem;"> · {{ p.produitCode }}</span>
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-
-              <ng-container *ngIf="nvl.produitId">
-
-                <!-- Étape 2 — Structure cible -->
-                <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">2. Structure destinataire (en tension / rupture)</div>
-                <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-                  <mat-label>Structure cible</mat-label>
-                  <mat-select [(ngModel)]="nvl.cibleId" (ngModelChange)="onCibleChange()">
-                    <mat-option [value]="null">-- Sélectionner --</mat-option>
-                    <mat-option *ngFor="let s of ciblesDisponibles" [value]="s.structureId">
-                      <span [style.color]="s.statutStock === 'RUPTURE' ? '#dc2626' : '#d97706'">
-                        {{ s.statutStock }}
-                      </span> · {{ s.structureNom }}
-                      <span style="color:var(--text-secondary);font-size:.78rem;"> (MSD : {{ s.msd | number:'1.1-1' }})</span>
-                    </mat-option>
-                  </mat-select>
-                </mat-form-field>
-
-                <!-- Étape 3 — Structure source -->
-                <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">3. Structure source (en surstock ou stock dormant)</div>
-                <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-                  <mat-label>Structure source</mat-label>
-                  <mat-select [(ngModel)]="nvl.sourceId" (ngModelChange)="onSourceChange()">
-                    <mat-option [value]="null">-- Sélectionner --</mat-option>
-                    <mat-option *ngFor="let s of sourcesDisponibles" [value]="s.structureId">
-                      {{ s.structureNom }}
-                      <span *ngIf="s.statutStock === 'STOCK_DORMANT'" style="color:#475569;font-size:.78rem;"> (Stock dormant — {{ s.excedent | number:'1.0-0' }} unités redistribuables)</span>
-                      <span *ngIf="s.statutStock !== 'STOCK_DORMANT'" style="color:var(--text-secondary);font-size:.78rem;"> (MSD : {{ s.msd | number:'1.1-1' }} · excédent : {{ s.excedent | number:'1.0-0' }})</span>
-                    </mat-option>
-                  </mat-select>
-                </mat-form-field>
-
-                <!-- Info stock disponible -->
-                <div *ngIf="nvl.loadingStock" style="display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--text-secondary);margin-bottom:.5rem;">
-                  <mat-spinner diameter="14"></mat-spinner> Chargement du stock disponible…
-                </div>
-                <div *ngIf="nvl.sourceId && !nvl.loadingStock && nvl.stockNet !== null"
-                     style="display:flex;align-items:center;gap:.75rem;padding:.5rem .875rem;background:#f0fdf4;border:1px solid rgba(22,163,74,.3);border-radius:.375rem;font-size:.82rem;margin-bottom:.75rem;">
-                  <mat-icon style="color:#16a34a;font-size:16px;width:16px;height:16px;">inventory</mat-icon>
-                  Stock disponible net&nbsp;:
-                  <strong style="color:#15803d;font-family:monospace;">{{ nvl.stockNet | number:'1.0-0' }}</strong>
-                  <span style="color:var(--text-secondary);">(brut : {{ nvl.stockBrut | number:'1.0-0' }} − allocations : {{ (nvl.stockBrut! - nvl.stockNet!) | number:'1.0-0' }})</span>
-                </div>
-
-                <!-- Étape 4 — Quantité -->
-                <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">4. Quantité à redistribuer</div>
-                <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;" *ngIf="nvl.sourceId">
-                  <mat-label>Quantité</mat-label>
-                  <input matInput type="number" min="1" [(ngModel)]="nvl.quantite">
-                  <mat-error *ngIf="quantiteDepasse">
-                    Dépasse le stock disponible net ({{ nvl.stockNet | number:'1.0-0' }})
-                  </mat-error>
-                </mat-form-field>
-
-                <!-- Étape 5 — Date péremption (lecture seule FEFO) -->
-                <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">5. Date de péremption — lot FEFO (source)</div>
-                <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .875rem;background:#f8fafc;border:1px solid var(--border-color);border-radius:.375rem;font-size:.875rem;margin-bottom:.875rem;min-height:40px;">
-                  <mat-icon style="font-size:16px;width:16px;height:16px;color:var(--text-secondary);">event</mat-icon>
-                  <span *ngIf="nvl.expireDate" style="font-family:monospace;">{{ nvl.expireDate | date:'dd/MM/yyyy' }}</span>
-                  <span *ngIf="!nvl.expireDate" style="color:var(--text-secondary);font-style:italic;">— alimentée automatiquement dès la source sélectionnée —</span>
-                </div>
-
-                <!-- Bouton ajouter -->
-                <button mat-raised-button color="accent"
-                  (click)="ajouterLigneManuel()"
-                  [disabled]="!peutAjouter || nvl.ajoutEnCours"
-                  style="background:#d97706;color:#fff;">
-                  <mat-spinner *ngIf="nvl.ajoutEnCours" diameter="16" style="display:inline-block;margin-right:.3rem;"></mat-spinner>
-                  <mat-icon *ngIf="!nvl.ajoutEnCours">add</mat-icon>
-                  Ajouter cette ligne
-                </button>
-
-                <!-- Alerte quantité -->
-                <div *ngIf="quantiteDepasse" style="margin-top:.5rem;padding:.5rem .75rem;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:.375rem;font-size:.82rem;color:#b91c1c;">
-                  <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">block</mat-icon>
-                  Quantité supérieure au stock disponible net — ajout bloqué.
-                </div>
-
-              </ng-container><!-- fin ng-container produitId -->
-
-              <!-- Erreur ajout -->
-              <div *ngIf="erreurAjout" style="margin-top:.75rem;padding:.5rem .875rem;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:.375rem;font-size:.85rem;color:#b91c1c;display:flex;gap:.5rem;align-items:center;">
-                <mat-icon style="font-size:16px;width:16px;height:16px;">error_outline</mat-icon>
-                {{ erreurAjout }}
-              </div>
-
-            </mat-card-content>
-          </mat-card><!-- fin formulaire -->
+          <!-- Répartition : cibles à gauche, sources à droite, enregistrement automatique -->
+          <app-repartition-manuelle *ngIf="produitsEnTension.length > 0"
+            [plan]="plan" [produits]="produitsEnTension" [lignesPlan]="plan.lignes"
+            (lignesModifiees)="onLignesModifiees($event)">
+          </app-repartition-manuelle>
+          <div *ngIf="erreurAjout" style="margin-bottom:1rem;padding:.5rem .875rem;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:.375rem;font-size:.85rem;color:#b91c1c;display:flex;gap:.5rem;align-items:center;">
+            <mat-icon style="font-size:16px;width:16px;height:16px;">error_outline</mat-icon>
+            {{ erreurAjout }}
+          </div>
 
           <!-- Tableau des lignes saisies -->
           <mat-card>
@@ -652,13 +649,14 @@ import {
                 </ng-container>
                 <ng-container matColumnDef="expireDate">
                   <th mat-header-cell *matHeaderCellDef>Péremption (FEFO)</th>
-                  <td mat-cell *matCellDef="let l" style="font-size:.82rem;color:var(--text-secondary);">{{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '—' }}</td>
+                  <td mat-cell *matCellDef="let l" style="font-size:.82rem;color:var(--text-secondary);">{{ l.expireDate ? (l.expireDate | date:'dd/MM/yyyy') : '-' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="action">
                   <th mat-header-cell *matHeaderCellDef></th>
                   <td mat-cell *matCellDef="let l" style="text-align:right;">
-                    <button mat-icon-button color="warn" (click)="supprimerLigne(l)" matTooltip="Supprimer">
-                      <mat-icon style="font-size:18px;width:18px;height:18px;">delete_outline</mat-icon>
+                    <button mat-stroked-button color="warn" (click)="supprimerLigne(l)" matTooltip="Annuler ce mouvement : il est retiré du plan"
+                            style="font-size:.75rem;line-height:28px;padding:0 .6rem;">
+                      <mat-icon style="font-size:16px;width:16px;height:16px;margin-right:.2rem;">undo</mat-icon>Annuler
                     </button>
                   </td>
                 </ng-container>
@@ -667,7 +665,7 @@ import {
                 <tr class="mat-row" *matNoDataRow>
                   <td colspan="7" style="text-align:center;padding:2.5rem;color:var(--text-secondary);">
                     <mat-icon style="display:block;font-size:2rem;width:2rem;height:2rem;margin:0 auto .5rem;">playlist_add</mat-icon>
-                    Aucune ligne — utilisez le formulaire ci-dessus pour construire le plan
+                    Aucun mouvement. Saisissez des quantités dans la répartition ci-dessus
                   </td>
                 </tr>
               </table>
@@ -689,10 +687,20 @@ export class GenerationComponent implements OnInit, AfterViewInit {
   programmeId: number | null = null;
   regionId: number | null = null;
   notes = '';
+  /** Mode choisi par le pharmacien avant de lancer : analyse IA ou répartition manuelle. */
+  mode: 'IA' | 'MANUEL' = 'MANUEL';
+  iaDisponible = false;
+  /** Motif de la bascule IA → manuel lors de la dernière génération, affiché tant qu'il est utile. */
+  motifBascule: string | null = null;
 
   plan: PlanReattribution | null = null;
   dsLignes = new MatTableDataSource<LignePlan>([]);
   loading = false;
+  /** Brouillon trouvé sur le périmètre choisi : l'utilisateur choisit de le reprendre ou de le remplacer. */
+  brouillonExistant: PlanReattribution | null = null;
+  /** Vrai quand « Nouveau plan » attend de savoir quoi faire du brouillon affiché. */
+  choixNouveau = false;
+  suppressionEnCours = false;
   validating = false;
   error = '';
 
@@ -700,19 +708,19 @@ export class GenerationComponent implements OnInit, AfterViewInit {
   readonly colsBrouillon = ['produit', 'source', 'destination', 'quantite', 'expireDate', 'statut', 'actionsIA'];
   readonly colsValide    = ['produit', 'source', 'destination', 'quantite', 'qtExec', 'statut', 'actionsIA'];
 
-  // Mode IA — édition d'une ligne
+  // Mode IA : édition d'une ligne
   editingLigne: LignePlan | null = null;
   editForm: {
     quantite: number | null;
     notes: string;
     stockNet: number | null;
-    stockBrut: number | null;
+    stockBrut: number | null; cessible: StockSourceInfo | null;
     loadingStock: boolean;
     saving: boolean;
   } = this.editFormVide();
   erreurEdition = '';
 
-  // Mode IA — exécution d'une ligne
+  // Mode IA : exécution d'une ligne
   executingLigne: LignePlan | null = null;
   execQuantite: number | null = null;
   execNotes = '';
@@ -725,17 +733,6 @@ export class GenerationComponent implements OnInit, AfterViewInit {
   loadingAnalyse = false;
   erreurAjout = '';
 
-  nvl: {
-    produitId: number | null;
-    cibleId:   number | null;
-    sourceId:  number | null;
-    quantite:  number | null;
-    expireDate: string | null;
-    stockNet:  number | null;
-    stockBrut: number | null;
-    loadingStock: boolean;
-    ajoutEnCours: boolean;
-  } = this.nvlVide();
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
@@ -756,6 +753,10 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       return;
     }
     this.regionId = this.auth.regionId;
+    this.planService.iaDisponible().subscribe({
+      next: r => { this.iaDisponible = r.disponible; this.mode = r.disponible ? 'IA' : 'MANUEL'; },
+      error: () => { this.iaDisponible = false; this.mode = 'MANUEL'; }
+    });
     this.refService.getPeriodes().subscribe(p => this.periodes = p);
     this.refService.getProgrammes().subscribe(p => this.programmes = p);
     if (this.regionId) {
@@ -781,30 +782,10 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     return (this.analyse?.produits ?? []).filter(p => !!p.diagnostiqueSource);
   }
 
-  get ciblesDisponibles(): StructureAnalyse[] {
-    const p = this.produitsEnTension.find(p => p.produitId === this.nvl.produitId);
-    return p ? [...(p.structuresEnRupture ?? []), ...(p.structuresEnTension ?? [])] : [];
-  }
-
-  get sourcesDisponibles(): StructureAnalyse[] {
-    const p = this.produitsEnTension.find(p => p.produitId === this.nvl.produitId);
-    return p ? (p.structuresEnSurstock ?? []) : [];
-  }
-
-  get quantiteDepasse(): boolean {
-    return this.nvl.quantite !== null && this.nvl.stockNet !== null
-        && this.nvl.quantite > this.nvl.stockNet;
-  }
-
-  get peutAjouter(): boolean {
-    return !!this.nvl.produitId && !!this.nvl.cibleId && !!this.nvl.sourceId
-        && this.nvl.quantite !== null && this.nvl.quantite > 0
-        && !this.quantiteDepasse && !this.nvl.loadingStock;
-  }
 
   get editQuantiteDepasse(): boolean {
-    return this.editForm.quantite !== null && this.editForm.stockNet !== null
-        && this.editForm.quantite > this.editForm.stockNet;
+    return this.editForm.quantite !== null && this.editForm.cessible !== null
+        && this.editForm.quantite > this.editForm.cessible.quantiteMaxCessible;
   }
 
   get peutSauvegarderEdit(): boolean {
@@ -834,25 +815,55 @@ export class GenerationComponent implements OnInit, AfterViewInit {
 
   // ── Génération ───────────────────────────────────────────────────────────────
 
+  /** Un seul brouillon par période, programme et région : s'il existe, on propose de le reprendre. */
   generer(): void {
+    if (!this.periodeId || !this.regionId) return;
+    this.loading = true; this.error = ''; this.brouillonExistant = null;
+    this.planService.getBrouillon(this.periodeId, this.programmeId, this.regionId).subscribe({
+      next: b => {
+        if (b) { this.brouillonExistant = b; this.loading = false; }
+        else this.lancerGeneration(false);
+      },
+      error: err => { this.error = err.error?.message || 'Erreur lors de la recherche du brouillon'; this.loading = false; }
+    });
+  }
+
+  reprendreBrouillon(): void {
+    const b = this.brouillonExistant;
+    if (!b) return;
+    this.brouillonExistant = null;
+    this.afficherPlan(b);
+  }
+
+  remplacerBrouillon(): void {
+    this.brouillonExistant = null;
+    this.lancerGeneration(true);
+  }
+
+  private lancerGeneration(remplacer: boolean): void {
     if (!this.periodeId || !this.regionId) return;
     this.loading = true; this.error = ''; this.plan = null;
     this.analyse = null; this.produitsEnTension = [];
-    this.planService.generer(this.periodeId, this.programmeId, this.regionId, this.notes).subscribe({
+    this.planService.generer(this.periodeId, this.programmeId, this.regionId, this.notes, remplacer, this.mode === 'IA').subscribe({
       next: p => {
-        this.plan = p;
-        this.dsLignes.data = p.lignes ?? [];
-        this.loading = false;
-        setTimeout(() => {
-          this.dsLignes.paginator = this.paginator;
-          this.dsLignes.sort = this.sort;
-        });
-        if (this.programmeId) {
-          this.chargerAnalyse();
-        }
+        this.motifBascule = p.basculeManuel ? (p.motifBascule ?? "L'analyse IA n'est pas disponible.") : null;
+        this.afficherPlan(p);
       },
       error: err => { this.error = err.error?.message || 'Erreur lors de la génération'; this.loading = false; }
     });
+  }
+
+  private afficherPlan(p: PlanReattribution): void {
+    this.plan = { ...p, lignes: p.lignes ?? [] };
+    this.dsLignes.data = p.lignes ?? [];
+    this.loading = false;
+    setTimeout(() => {
+      this.dsLignes.paginator = this.paginator;
+      this.dsLignes.sort = this.sort;
+    });
+    if (this.programmeId) {
+      this.chargerAnalyse();
+    }
   }
 
   chargerAnalyse(): void {
@@ -870,7 +881,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     });
   }
 
-  // ── Mode IA — édition d'une ligne ────────────────────────────────────────────
+  // ── Mode IA : édition d'une ligne ────────────────────────────────────────────
 
   startEdit(ligne: LignePlan): void {
     this.editingLigne = ligne;
@@ -879,7 +890,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       quantite: ligne.quantiteProposee,
       notes: ligne.notes ?? '',
       stockNet: null,
-      stockBrut: null,
+      stockBrut: null, cessible: null,
       loadingStock: true,
       saving: false
     };
@@ -889,6 +900,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       next: info => {
         this.editForm.stockNet    = info.stockNet;
         this.editForm.stockBrut   = info.stockBrut;
+        this.editForm.cessible = info;
         this.editForm.loadingStock = false;
       },
       error: () => { this.editForm.loadingStock = false; }
@@ -913,7 +925,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       notes:             this.editForm.notes || null
     } as any).subscribe({
       next: updated => {
-        this.plan!.lignes = this.plan!.lignes.map(l => l.id === updated.id ? updated : l);
+        this.plan!.lignes = (this.plan!.lignes ?? []).map(l => l.id === updated.id ? updated : l);
         this.dsLignes.data = this.plan!.lignes;
         this.editingLigne = null;
         this.editForm = this.editFormVide();
@@ -926,7 +938,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     });
   }
 
-  // ── Mode IA — exécution d'une ligne ─────────────────────────────────────────
+  // ── Mode IA : exécution d'une ligne ─────────────────────────────────────────
 
   startExecute(ligne: LignePlan): void {
     this.executingLigne = ligne;
@@ -950,7 +962,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       this.plan.id, this.executingLigne.id, this.execQuantite, this.execNotes || undefined
     ).subscribe({
       next: updated => {
-        this.plan!.lignes = this.plan!.lignes.map(l => l.id === updated.id ? updated : l);
+        this.plan!.lignes = (this.plan!.lignes ?? []).map(l => l.id === updated.id ? updated : l);
         this.dsLignes.data = this.plan!.lignes;
         this.executingLigne  = null;
         this.execQuantite    = null;
@@ -966,56 +978,12 @@ export class GenerationComponent implements OnInit, AfterViewInit {
 
   // ── Mode manuel ──────────────────────────────────────────────────────────────
 
-  onProduitChange(): void {
-    this.nvl = { ...this.nvlVide(), produitId: this.nvl.produitId };
-  }
-
-  onCibleChange(): void { /* la cible ne déclenche pas de chargement stock */ }
-
-  onSourceChange(): void {
-    this.nvl.quantite   = null;
-    this.nvl.expireDate = null;
-    this.nvl.stockNet   = null;
-    this.nvl.stockBrut  = null;
-    if (!this.nvl.produitId || !this.nvl.sourceId || !this.plan) return;
-    this.nvl.loadingStock = true;
-    this.planService.getStockSource(
-      this.periodeId!, this.nvl.produitId, this.nvl.sourceId, this.plan.id
-    ).subscribe({
-      next: info => {
-        this.nvl.expireDate   = info.expireDateFefo;
-        this.nvl.stockNet     = info.stockNet;
-        this.nvl.stockBrut    = info.stockBrut;
-        this.nvl.loadingStock = false;
-      },
-      error: err => {
-        this.erreurAjout = err.error?.message || 'Impossible de charger le stock source';
-        this.nvl.loadingStock = false;
-      }
-    });
-  }
-
-  ajouterLigneManuel(): void {
-    if (!this.peutAjouter || !this.plan) return;
-    this.nvl.ajoutEnCours = true;
+  /** La répartition a enregistré, modifié ou supprimé un mouvement. */
+  onLignesModifiees(lignes: LignePlan[]): void {
+    if (!this.plan) return;
+    this.plan.lignes = lignes;
+    this.dsLignes.data = lignes;
     this.erreurAjout = '';
-    this.planService.ajouterLigne(this.plan.id, {
-      produitId:         this.nvl.produitId,
-      structureCibleId:  this.nvl.cibleId,
-      structureSourceId: this.nvl.sourceId,
-      quantiteProposee:  this.nvl.quantite
-    } as any).subscribe({
-      next: ligne => {
-        this.plan!.lignes = [...(this.plan!.lignes ?? []), ligne];
-        this.dsLignes.data = this.plan!.lignes;
-        this.nvl = this.nvlVide();
-        this.snackBar.open('Ligne ajoutée.', 'OK', { duration: 2000 });
-      },
-      error: err => {
-        this.erreurAjout = err.error?.message || "Erreur lors de l'ajout";
-        this.nvl.ajoutEnCours = false;
-      }
-    });
   }
 
   supprimerLigne(ligne: LignePlan): void {
@@ -1023,7 +991,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     const wasValide = this.plan.statut !== 'BROUILLON';
     this.planService.supprimerLigne(this.plan.id, ligne.id).subscribe({
       next: () => {
-        this.plan!.lignes = this.plan!.lignes.filter(l => l.id !== ligne.id);
+        this.plan!.lignes = (this.plan!.lignes ?? []).filter(l => l.id !== ligne.id);
         this.dsLignes.data = this.plan!.lignes;
         this.snackBar.open('Ligne supprimée.', 'OK', { duration: 2000 });
         // Recharger le plan si VALIDE : la suppression peut avoir déclenché la clôture automatique
@@ -1032,7 +1000,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
             this.plan = updated;
             this.dsLignes.data = updated.lignes ?? [];
             if (updated.statut === 'CLOTURE') {
-              this.snackBar.open('Toutes les lignes exécutées — plan clôturé automatiquement.', 'OK', { duration: 4000 });
+              this.snackBar.open('Toutes les lignes exécutées : plan clôturé automatiquement.', 'OK', { duration: 4000 });
             }
           });
         }
@@ -1055,7 +1023,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
           this.dsLignes.data = updated.lignes ?? [];
           this.validating = false;
           this.snackBar.open(
-            'Plan validé — enregistrez les exécutions ligne par ligne.',
+            'Plan validé : enregistrez les exécutions ligne par ligne.',
             'OK', { duration: 4000 }
           );
         } else {
@@ -1071,24 +1039,47 @@ export class GenerationComponent implements OnInit, AfterViewInit {
     });
   }
 
+  /** « Nouveau plan » : un brouillon affiché n'est plus abandonné sans qu'on le sache. */
   reinitialiser(): void {
+    if (this.plan?.statut === 'BROUILLON') { this.choixNouveau = true; return; }
+    this.viderEcran();
+  }
+
+  nouveauEnGardant(): void {
+    this.viderEcran();
+    this.snackBar.open('Brouillon conservé : il sera proposé à la prochaine génération.', 'OK', { duration: 3000 });
+  }
+
+  nouveauEnSupprimant(): void {
+    if (!this.plan) return;
+    this.suppressionEnCours = true;
+    this.planService.supprimerPlan(this.plan.id).subscribe({
+      next: () => {
+        this.suppressionEnCours = false;
+        this.viderEcran();
+        this.snackBar.open('Brouillon supprimé.', 'OK', { duration: 2000 });
+      },
+      error: err => {
+        this.suppressionEnCours = false;
+        this.choixNouveau = false;
+        this.error = err.error?.message || 'Suppression du brouillon impossible.';
+      }
+    });
+  }
+
+  private viderEcran(): void {
+    this.choixNouveau = false; this.brouillonExistant = null; this.motifBascule = null;
     this.plan = null; this.analyse = null;
     this.produitsEnTension = []; this.dsLignes.data = [];
-    this.nvl = this.nvlVide(); this.error = ''; this.erreurAjout = '';
+    this.error = ''; this.erreurAjout = '';
     this.editingLigne = null; this.editForm = this.editFormVide();
     this.executingLigne = null;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  private nvlVide() {
-    return { produitId: null, cibleId: null, sourceId: null, quantite: null,
-             expireDate: null, stockNet: null, stockBrut: null,
-             loadingStock: false, ajoutEnCours: false };
-  }
-
   private editFormVide() {
-    return { quantite: null, notes: '', stockNet: null, stockBrut: null,
+    return { quantite: null, notes: '', stockNet: null, stockBrut: null, cessible: null,
              loadingStock: false, saving: false };
   }
 }

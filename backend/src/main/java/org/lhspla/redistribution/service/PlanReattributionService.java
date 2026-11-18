@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,7 +46,7 @@ public class PlanReattributionService {
     private final PeriodeService periodeService;
 
     public PlanReattributionDTO generer(PlanGenerationRequest req, String username) {
-        PeriodeSaisie periode = periodeRepo.findById(req.getPeriodeId())
+        PeriodeSaisie periode = periodeRepo.verrouiller(req.getPeriodeId())
                 .orElseThrow(() -> BusinessException.notFound("Période", req.getPeriodeId()));
         Region region = regionRepo.findById(req.getRegionId())
                 .orElseThrow(() -> BusinessException.notFound("Région", req.getRegionId()));
@@ -54,6 +55,21 @@ public class PlanReattributionService {
             throw BusinessException.badRequest(
                 "Un plan validé ou en cours d'exécution existe déjà pour cette période et ce programme. " +
                 "Clôturez-le avant d'en générer un nouveau.");
+        }
+
+        // Un seul brouillon par périmètre : on le reprend, ou on le remplace explicitement.
+        List<PlanReattribution> brouillons = planRepo.findBrouillons(
+                req.getPeriodeId(), req.getProgrammeId(), req.getRegionId());
+        if (!brouillons.isEmpty()) {
+            if (!req.isRemplacerBrouillon()) {
+                throw BusinessException.conflict(String.format(
+                    "Un plan brouillon (n° %d) existe déjà pour cette période et ce programme. "
+                    + "Reprenez-le ou demandez son remplacement.", brouillons.get(0).getId()));
+            }
+            log.info("Remplacement de {} brouillon(s) : {}", brouillons.size(),
+                    brouillons.stream().map(PlanReattribution::getId).toList());
+            planRepo.deleteAll(brouillons);
+            planRepo.flush();
         }
 
         final AnalyseResultatDTO analyse;
@@ -105,13 +121,25 @@ public class PlanReattributionService {
         double seuil = region.getSeuilStockSecuriteMsd() != null
                 ? region.getSeuilStockSecuriteMsd().doubleValue() : 2.0;
 
+        // Répartition manuelle choisie : plan vide, construit ensuite produit par produit.
+        // Analyse IA choisie mais non configurée ou sans réponse : le plan bascule en
+        // répartition manuelle, et le motif est renvoyé pour prévenir le pharmacien.
         MistralIaService.PlanIaResponse iaResponse = null;
-        if (analyse.getProduits() != null && !analyse.getProduits().isEmpty()) {
-            try {
-                iaResponse = mistralIaService.genererPlan(analyse, seuil);
-            } catch (Exception e) {
-                log.warn("Mistral API indisponible, génération manuelle: {}", e.getMessage());
+        String motifBascule = null;
+        if (req.avecAnalyseIa() && analyse.getProduits() != null && !analyse.getProduits().isEmpty()) {
+            if (!mistralIaService.estConfiguree()) {
+                motifBascule = "L'analyse IA n'est pas configurée sur ce serveur.";
+            } else {
+                try {
+                    iaResponse = mistralIaService.genererPlan(analyse, seuil);
+                } catch (Exception e) {
+                    log.warn("Mistral API indisponible : {}", e.getMessage());
+                }
+                if (iaResponse == null) {
+                    motifBascule = "L'analyse IA n'a pas abouti (service injoignable ou réponse invalide).";
+                }
             }
+            if (motifBascule != null) log.info("Génération IA demandée, bascule en répartition manuelle : {}", motifBascule);
         }
 
         if (iaResponse != null) {
@@ -122,7 +150,7 @@ public class PlanReattributionService {
                 resume += (resume.isEmpty() ? "" : "\n\n")
                         + "⚠ " + String.join(" | ", iaResponse.avertissements());
             }
-            plan.setResumeIa(resume.isBlank() ? null : resume);
+            plan.setResumeIa(resume.isBlank() ? null : sansTiretCadratin(resume));
             plan = planRepo.save(plan);
 
             for (MistralIaService.MouvementIA mv : iaResponse.mouvements()) {
@@ -138,7 +166,12 @@ public class PlanReattributionService {
 
         periodeService.verifierEtFermerAutomatiquement(req.getPeriodeId(), req.getRegionId());
 
-        return toDTO(planRepo.findById(plan.getId()).orElseThrow(), true);
+        PlanReattributionDTO dto = toDTO(planRepo.findById(plan.getId()).orElseThrow(), true);
+        if (motifBascule != null) {
+            dto.setBasculeManuel(true);
+            dto.setMotifBascule(motifBascule);
+        }
+        return dto;
     }
 
     @Transactional(readOnly = true)
@@ -156,6 +189,17 @@ public class PlanReattributionService {
         return plans.stream().map(p -> toDTO(p, false)).toList();
     }
 
+    public boolean iaConfiguree() {
+        return mistralIaService.estConfiguree();
+    }
+
+    /** Brouillon le plus récent du périmètre, s'il existe, pour proposer de le reprendre. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<PlanReattributionDTO> brouillonExistant(Long periodeId, Long programmeId, Long regionId) {
+        return planRepo.findBrouillons(periodeId, programmeId, regionId).stream()
+                .findFirst().map(p -> toDTO(p, true));
+    }
+
     @Transactional(readOnly = true)
     public PlanReattributionDTO findById(Long id) {
         return planRepo.findById(id)
@@ -164,6 +208,11 @@ public class PlanReattributionService {
     }
 
     public PlanReattributionDTO valider(Long id, String username) {
+        PlanReattribution dejaValide = planRepo.verrouiller(id)
+                .orElseThrow(() -> BusinessException.notFound("Plan", id));
+        if ("VALIDE".equals(dejaValide.getStatut()) || "EN_COURS".equals(dejaValide.getStatut())) {
+            return toDTO(dejaValide, true);
+        }
         PlanReattribution plan = getPlanModifiable(id);
         if (plan.getLignes() == null || plan.getLignes().isEmpty()) {
             throw BusinessException.badRequest("Impossible de valider un plan sans lignes");
@@ -177,32 +226,36 @@ public class PlanReattributionService {
     }
 
     public LignePlanDTO ajouterLigne(Long planId, LignePlanRequest req) {
+        planRepo.verrouiller(planId);
         PlanReattribution plan = getPlanModifiable(planId);
+        verifierStructuresDansRegionDuPlan(plan, req);
         validateCibleEnTension(plan, req);
+        if (!ligneRepo.findMouvement(planId, req.getProduitId(), req.getStructureSourceId(), req.getStructureCibleId()).isEmpty()) {
+            throw BusinessException.conflict(
+                "Ce mouvement (même produit, même source, même cible) existe déjà dans le plan : modifiez sa quantité.");
+        }
         StockSourceDTO stockInfo = calculerStockSource(
                 plan.getPeriode().getId(), req.getProduitId(), req.getStructureSourceId(), planId, -1L);
-        if (req.getQuantiteProposee().compareTo(stockInfo.getStockNet()) > 0) {
-            throw BusinessException.badRequest(String.format(
-                "Quantité allouée (%s) supérieure au stock disponible net de la source (%s)",
-                req.getQuantiteProposee().toPlainString(), stockInfo.getStockNet().toPlainString()));
-        }
+        verifierQuantiteCessible(req.getQuantiteProposee(), stockInfo);
         LignePlan ligne = buildLigne(plan, req);
         ligne.setExpireDate(stockInfo.getExpireDateFefo());
         return toLigneDTO(ligneRepo.save(ligne));
     }
 
     public LignePlanDTO modifierLigne(Long planId, Long ligneId, LignePlanRequest req) {
+        planRepo.verrouiller(planId);
         PlanReattribution plan = getPlanModifiable(planId);
-        LignePlan ligne = ligneRepo.findById(ligneId)
-                .orElseThrow(() -> BusinessException.notFound("Ligne", ligneId));
+        LignePlan ligne = ligneDuPlan(planId, ligneId);
+        verifierStructuresDansRegionDuPlan(plan, req);
         validateCibleEnTension(plan, req);
+        if (ligneRepo.findMouvement(planId, req.getProduitId(), req.getStructureSourceId(), req.getStructureCibleId())
+                .stream().anyMatch(l -> !l.getId().equals(ligneId))) {
+            throw BusinessException.conflict(
+                "Ce mouvement (même produit, même source, même cible) existe déjà dans le plan.");
+        }
         StockSourceDTO stockInfo = calculerStockSource(
                 plan.getPeriode().getId(), req.getProduitId(), req.getStructureSourceId(), planId, ligneId);
-        if (req.getQuantiteProposee().compareTo(stockInfo.getStockNet()) > 0) {
-            throw BusinessException.badRequest(String.format(
-                "Quantité allouée (%s) supérieure au stock disponible net de la source (%s)",
-                req.getQuantiteProposee().toPlainString(), stockInfo.getStockNet().toPlainString()));
-        }
+        verifierQuantiteCessible(req.getQuantiteProposee(), stockInfo);
         Produit produit = produitRepo.findById(req.getProduitId())
                 .orElseThrow(() -> BusinessException.notFound("Produit", req.getProduitId()));
         Structure source = structureRepo.findById(req.getStructureSourceId())
@@ -232,7 +285,7 @@ public class PlanReattributionService {
     }
 
     public void supprimerLigne(Long planId, Long ligneId, String username) {
-        PlanReattribution plan = planRepo.findById(planId)
+        PlanReattribution plan = planRepo.verrouiller(planId)
                 .orElseThrow(() -> BusinessException.notFound("Plan", planId));
         if ("CLOTURE".equals(plan.getStatut())) {
             throw BusinessException.badRequest("Le plan est clôturé, suppression impossible");
@@ -240,24 +293,23 @@ public class PlanReattributionService {
         if (!"BROUILLON".equals(plan.getStatut())) {
             Utilisateur user = utilisateurRepo.findByUsername(username).orElseThrow();
             String roleName = user.getRole().getName();
-            if (!List.of("SUPERVISEUR", "ADMIN").contains(roleName)) {
+            if (!"ADMIN".equals(roleName)) {
                 throw BusinessException.badRequest(
-                    "Seul un superviseur de région peut supprimer une ligne d'un plan validé");
+                    "Seul un administrateur peut supprimer une ligne d'un plan validé");
             }
         }
-        ligneRepo.deleteById(ligneId);
+        ligneRepo.delete(ligneDuPlan(planId, ligneId));
         verifierCloturePlan(plan);
     }
 
     public LignePlanDTO executerLigne(Long planId, Long ligneId, ExecutionRequest req) {
-        PlanReattribution plan = planRepo.findById(planId)
+        PlanReattribution plan = planRepo.verrouiller(planId)
                 .orElseThrow(() -> BusinessException.notFound("Plan", planId));
         if ("BROUILLON".equals(plan.getStatut())) {
             throw BusinessException.badRequest("Le plan doit être validé avant d'enregistrer des exécutions");
         }
 
-        LignePlan ligne = ligneRepo.findById(ligneId)
-                .orElseThrow(() -> BusinessException.notFound("Ligne", ligneId));
+        LignePlan ligne = ligneDuPlan(planId, ligneId);
 
         ligne.setQuantiteExecutee(req.getQuantiteExecutee());
         ligne.setNotes(req.getNotes());
@@ -283,6 +335,40 @@ public class PlanReattributionService {
             plan.setStatut("CLOTURE");
             plan.setDateCloture(LocalDateTime.now());
             planRepo.save(plan);
+        }
+    }
+
+    /** Région d'un plan, pour le contrôle de périmètre. */
+    @Transactional(readOnly = true)
+    public Long regionDuPlan(Long planId) {
+        PlanReattribution plan = planRepo.findById(planId)
+                .orElseThrow(() -> BusinessException.notFound("Plan", planId));
+        return plan.getRegion() != null ? plan.getRegion().getId() : null;
+    }
+
+    /** Une ligne n'est accessible qu'au travers de son propre plan. */
+    private LignePlan ligneDuPlan(Long planId, Long ligneId) {
+        LignePlan ligne = ligneRepo.findById(ligneId)
+                .orElseThrow(() -> BusinessException.notFound("Ligne", ligneId));
+        if (ligne.getPlan() == null || !planId.equals(ligne.getPlan().getId())) {
+            throw BusinessException.notFound("Ligne", ligneId);
+        }
+        return ligne;
+    }
+
+    /** Source et cible d'une ligne doivent être des sites de la région du plan. */
+    private void verifierStructuresDansRegionDuPlan(PlanReattribution plan, LignePlanRequest req) {
+        Long regionPlan = plan.getRegion() != null ? plan.getRegion().getId() : null;
+        for (Long structureId : java.util.Arrays.asList(req.getStructureSourceId(), req.getStructureCibleId())) {
+            if (structureId == null) continue;
+            Structure s = structureRepo.findById(structureId)
+                    .orElseThrow(() -> BusinessException.notFound("Structure", structureId));
+            Long regionStructure = s.getDistrict() != null && s.getDistrict().getRegion() != null
+                    ? s.getDistrict().getRegion().getId() : null;
+            if (regionPlan == null || !regionPlan.equals(regionStructure)) {
+                throw BusinessException.badRequest(
+                        "La structure « " + s.getNom() + " » n'appartient pas à la région du plan");
+            }
         }
     }
 
@@ -332,10 +418,41 @@ public class PlanReattributionService {
         ligne.setProduit(produit);
         ligne.setStructureSource(source);
         ligne.setStructureCible(cible);
-        ligne.setQuantiteProposee(BigDecimal.valueOf(mv.quantite_allouee()));
+        // Le système, et non l'IA, a le dernier mot sur le seuil de sécurité de la source :
+        // une quantité trop forte est ramenée à ce que la source peut céder.
+        BigDecimal quantite = BigDecimal.valueOf(mv.quantite_allouee());
+        String ajustement = "";
+        try {
+            StockSourceDTO stockInfo = calculerStockSource(
+                    plan.getPeriode().getId(), produit.getId(), source.getId(), plan.getId(), -1L);
+            if (quantite.compareTo(stockInfo.getQuantiteMaxCessible()) > 0) {
+                log.info("Mouvement IA ramené de {} à {} (seuil de sécurité de la source {})",
+                        quantite, stockInfo.getQuantiteMaxCessible(), source.getNom());
+                quantite = stockInfo.getQuantiteMaxCessible().setScale(0, java.math.RoundingMode.DOWN);
+                ajustement = " Quantité ramenée à " + quantite.toPlainString()
+                        + " par le système pour respecter le seuil de sécurité de la source.";
+            }
+        } catch (BusinessException e) {
+            log.warn("Mouvement IA ignoré, pas de stock source : {}", e.getMessage());
+            return;
+        }
+        if (quantite.signum() <= 0) {
+            log.info("Mouvement IA ignoré : la source {} n'a rien à céder", source.getNom());
+            return;
+        }
+        List<LignePlan> memeMouvement = ligneRepo.findMouvement(plan.getId(), produit.getId(), source.getId(), cible.getId());
+        if (!memeMouvement.isEmpty()) {
+            LignePlan existante = memeMouvement.get(0);
+            log.info("Mouvement IA en double fusionné dans la ligne {} (+{})", existante.getId(), quantite);
+            existante.setQuantiteProposee(existante.getQuantiteProposee().add(quantite));
+            ligneRepo.save(existante);
+            return;
+        }
+        ligne.setQuantiteProposee(quantite);
         // Motif IA stocké dans les notes de la ligne pour traçabilité
-        if (mv.motif() != null && !mv.motif().isBlank()) {
-            ligne.setNotes(mv.motif());
+        String motif = mv.motif() != null ? sansTiretCadratin(mv.motif()).trim() : "";
+        if (!(motif + ajustement).isBlank()) {
+            ligne.setNotes((motif + ajustement).trim());
         }
 
         // R5 — date de péremption lue depuis la source, jamais depuis la réponse IA
@@ -347,8 +464,11 @@ public class PlanReattributionService {
     }
 
     @Transactional(readOnly = true)
-    public ExecutionProgressionDTO getProgressionAnnee(int annee, Long regionId, Long programmeId) {
-        List<PlanReattribution> plans = planRepo.findForProgression(annee, regionId, programmeId);
+    public ExecutionProgressionDTO getProgressionAnnee(int annee, Set<Long> regionIds, Long programmeId) {
+        // regionIds == null : toutes les régions (ADMIN)
+        List<PlanReattribution> plans = planRepo.findForProgression(annee, null, programmeId).stream()
+                .filter(p -> regionIds == null || (p.getRegion() != null && regionIds.contains(p.getRegion().getId())))
+                .toList();
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("MM/yyyy");
 
@@ -392,16 +512,41 @@ public class PlanReattributionService {
                 .findByPeriodeIdAndStructureIdAndProduitId(periodeId, structureSourceId, produitId)
                 .orElseThrow(() -> BusinessException.badRequest(
                     "Aucune donnée de stock pour la structure source sur ce produit dans cette période"));
+        BigDecimal seuil = AnalyseStockService.seuilSecurite(
+                planRepo.findById(planId).map(PlanReattribution::getRegion).orElse(null));
         BigDecimal stockBrut    = saisie.getStockDisponible();
         BigDecimal allocations  = ligneRepo.sumAllocations(planId, structureSourceId, produitId,
                 excludeLigneId != null ? excludeLigneId : -1L);
+        if (allocations == null) allocations = BigDecimal.ZERO;
         BigDecimal stockNet     = stockBrut.subtract(allocations).max(BigDecimal.ZERO);
+        BigDecimal cessible     = analyseStockService.calculerExcedent(saisie, seuil)
+                .subtract(allocations).max(BigDecimal.ZERO).min(stockNet);
         StockSourceDTO dto = new StockSourceDTO();
         dto.setStockBrut(stockBrut);
         dto.setAllocationsExistantes(allocations);
         dto.setStockNet(stockNet);
+        dto.setQuantiteMaxCessible(cessible);
+        dto.setSeuilSecuriteMsd(seuil);
+        dto.setExceptionPeremption(analyseStockService.cedeParExceptionPeremption(saisie, seuil));
         dto.setExpireDateFefo(saisie.getExpireDate());
         return dto;
+    }
+
+    /** Refuse une quantité qui ferait passer la source sous son seuil de sécurité (hors exception péremption). */
+    private static void verifierQuantiteCessible(BigDecimal quantite, StockSourceDTO stockInfo) {
+        if (quantite.compareTo(stockInfo.getQuantiteMaxCessible()) <= 0) return;
+        String seuil = stockInfo.getSeuilSecuriteMsd().stripTrailingZeros().toPlainString();
+        if (stockInfo.getQuantiteMaxCessible().signum() == 0) {
+            throw BusinessException.badRequest(String.format(
+                "Cette source n'a plus rien à céder sur ce produit : elle doit conserver au moins %s mois de stock "
+                + "(seuil de sécurité de la région), allocations déjà prévues comprises.", seuil));
+        }
+        throw BusinessException.badRequest(String.format(
+            "Quantité (%s) supérieure à ce que la source peut céder (%s) : elle doit conserver au moins "
+            + "%s mois de stock (seuil de sécurité de la région)%s.",
+            quantite.stripTrailingZeros().toPlainString(),
+            stockInfo.getQuantiteMaxCessible().stripTrailingZeros().toPlainString(), seuil,
+            stockInfo.isExceptionPeremption() ? ", sauf la part de son lot qui périmera avant d'être consommée" : ""));
     }
 
     private void validateCibleEnTension(PlanReattribution plan, LignePlanRequest req) {
@@ -410,6 +555,9 @@ public class PlanReattributionService {
                         plan.getPeriode().getId(), req.getStructureCibleId(), req.getProduitId())
                 .orElseThrow(() -> BusinessException.badRequest(
                     "Aucune donnée de stock soumise pour la structure cible sur ce produit"));
+        if (req.getStructureCibleId().equals(req.getStructureSourceId())) {
+            throw BusinessException.badRequest("La structure source et la structure cible doivent être différentes.");
+        }
         if (!List.of("TENSION", "RUPTURE").contains(saisie.getStatutStock())) {
             throw BusinessException.badRequest(String.format(
                 "La structure cible n'est pas en tension ni en rupture (statut : %s). " +
@@ -446,8 +594,10 @@ public class PlanReattributionService {
         if (p.getValidePar() != null) {
             dto.setValideParUsername(p.getValidePar().getUsername());
         }
-        if (withLignes && p.getLignes() != null) {
-            List<LignePlanDTO> lignes = p.getLignes().stream().map(this::toLigneDTO).toList();
+        if (withLignes) {
+            // Un plan tout juste créé n'a pas encore de collection chargée : liste vide, jamais null
+            List<LignePlanDTO> lignes = p.getLignes() == null ? List.of()
+                    : p.getLignes().stream().map(this::toLigneDTO).toList();
             dto.setLignes(lignes);
             dto.setNbLignes(lignes.size());
             long executees = lignes.stream().filter(l -> "EXECUTE".equals(l.getStatut())).count();
@@ -488,5 +638,10 @@ public class PlanReattributionService {
                     .intValue());
         }
         return dto;
+    }
+
+    /** Le texte de l'IA est affiché tel quel : on remplace ses tirets cadratins. */
+    private static String sansTiretCadratin(String texte) {
+        return texte.replace(" — ", ", ").replace("—", "-");
     }
 }

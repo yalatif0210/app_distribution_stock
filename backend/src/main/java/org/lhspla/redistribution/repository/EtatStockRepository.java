@@ -12,6 +12,12 @@ import java.util.Optional;
 @Repository
 public interface EtatStockRepository extends JpaRepository<EtatStock, Long> {
 
+    /** État verrouillé : saisie et soumission d'un même état passent une à une. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM EtatStock e WHERE e.id = :id")
+    Optional<EtatStock> verrouiller(@org.springframework.data.repository.query.Param("id") Long id);
+
+
     Optional<EtatStock> findByPeriodeIdAndStructureIdAndProgrammeId(
             Long periodeId, Long structureId, Long programmeId);
 

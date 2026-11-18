@@ -20,6 +20,14 @@ public class BusinessException extends RuntimeException {
         return new BusinessException("BAD_REQUEST", message, HttpStatus.BAD_REQUEST);
     }
 
+    public static BusinessException indisponible(String message) {
+        return new BusinessException("SERVICE_UNAVAILABLE", message, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    public static BusinessException conflict(String message) {
+        return new BusinessException("CONFLICT", message, HttpStatus.CONFLICT);
+    }
+
     public static BusinessException forbidden(String message) {
         return new BusinessException("FORBIDDEN", message, HttpStatus.FORBIDDEN);
     }

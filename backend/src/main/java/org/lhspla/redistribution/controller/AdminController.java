@@ -29,7 +29,6 @@ public class AdminController {
     private final RoleRepository roleRepo;
     private final StructureRepository structureRepo;
     private final RegionRepository regionRepo;
-    private final DistrictRepository districtRepo;
     private final PasswordEncoder passwordEncoder;
     private final PeriodeService periodeService;
 
@@ -103,38 +102,70 @@ public class AdminController {
             u.setRole(roleRepo.findById(roleId).orElseThrow(() -> BusinessException.notFound("Role", roleId)));
         }
         if (body.containsKey("structureId")) {
-            Object sid = body.get("structureId");
-            u.setStructure(sid != null ? structureRepo.findById(((Number) sid).longValue()).orElse(null) : null);
+            Long sid = idOuNull(body.get("structureId"));
+            u.setStructure(sid != null ? structureRepo.findById(sid)
+                    .orElseThrow(() -> BusinessException.notFound("Structure", sid)) : null);
         }
         if (body.containsKey("regionId")) {
-            Object rid = body.get("regionId");
-            u.setRegion(rid != null ? regionRepo.findById(((Number) rid).longValue()).orElse(null) : null);
+            Long rid = idOuNull(body.get("regionId"));
+            u.setRegion(rid != null ? regionRepo.findById(rid)
+                    .orElseThrow(() -> BusinessException.notFound("Région", rid)) : null);
         }
         if (body.containsKey("supervisedRegionIds")) {
             List<?> ids = (List<?>) body.get("supervisedRegionIds");
             Set<Region> regions = ids == null ? new HashSet<>() :
-                ids.stream().map(id -> regionRepo.findById(((Number) id).longValue()).orElseThrow())
+                ids.stream().map(this::idOuNull).filter(java.util.Objects::nonNull)
+                    .map(id -> regionRepo.findById(id).orElseThrow(() -> BusinessException.notFound("Région", id)))
                     .collect(Collectors.toSet());
             u.getSupervisedRegions().clear();
             u.getSupervisedRegions().addAll(regions);
         }
-        if (body.containsKey("supervisedDistrictIds")) {
-            List<?> ids = (List<?>) body.get("supervisedDistrictIds");
-            Set<District> districts = ids == null ? new HashSet<>() :
-                ids.stream().map(id -> districtRepo.findById(((Number) id).longValue()).orElseThrow())
-                    .collect(Collectors.toSet());
-            u.getSupervisedDistricts().clear();
-            u.getSupervisedDistricts().addAll(districts);
-        }
-        if (body.containsKey("supervisedStructureIds")) {
-            List<?> ids = (List<?>) body.get("supervisedStructureIds");
-            Set<Structure> structures = ids == null ? new HashSet<>() :
-                ids.stream().map(id -> structureRepo.findById(((Number) id).longValue()).orElseThrow())
-                    .collect(Collectors.toSet());
-            u.getSupervisedStructures().clear();
-            u.getSupervisedStructures().addAll(structures);
-        }
+        appliquerPerimetreDuRole(u);
         return utilisateurRepo.save(u);
+    }
+
+    /**
+     * Un seul rattachement par rôle :
+     * GESTIONNAIRE → une structure (sa région en découle) ;
+     * PHARMACIEN_REGION → une région ;
+     * SUPERVISEUR → une ou plusieurs régions ;
+     * ADMIN → aucun.
+     * Les champs qui ne correspondent pas au rôle sont vidés.
+     */
+    private void appliquerPerimetreDuRole(Utilisateur u) {
+        if (u.getRole() == null) throw BusinessException.badRequest("Le rôle est obligatoire");
+        switch (u.getRole().getName()) {
+            case "GESTIONNAIRE" -> {
+                if (u.getStructure() == null)
+                    throw BusinessException.badRequest("Un gestionnaire doit être rattaché à une structure");
+                u.setRegion(null);
+                u.getSupervisedRegions().clear();
+            }
+            case "PHARMACIEN_REGION" -> {
+                if (u.getRegion() == null)
+                    throw BusinessException.badRequest("Un pharmacien de région doit être rattaché à une région");
+                u.setStructure(null);
+                u.getSupervisedRegions().clear();
+            }
+            case "SUPERVISEUR" -> {
+                if (u.getSupervisedRegions().isEmpty())
+                    throw BusinessException.badRequest("Un superviseur doit couvrir au moins une région");
+                u.setStructure(null);
+                u.setRegion(null);
+            }
+            default -> {
+                u.setStructure(null);
+                u.setRegion(null);
+                u.getSupervisedRegions().clear();
+            }
+        }
+    }
+
+    /** Les formulaires envoient parfois 0 pour « aucun » : traité comme null. */
+    private Long idOuNull(Object valeur) {
+        if (valeur == null) return null;
+        long id = ((Number) valeur).longValue();
+        return id > 0 ? id : null;
     }
 
     private UtilisateurDTO toDTO(Utilisateur u) {
@@ -149,8 +180,6 @@ public class AdminController {
         if (u.getStructure() != null) { dto.setStructureId(u.getStructure().getId()); dto.setStructureNom(u.getStructure().getNom()); }
         if (u.getRegion() != null) { dto.setRegionId(u.getRegion().getId()); dto.setRegionNom(u.getRegion().getNom()); }
         dto.setSupervisedRegionIds(u.getSupervisedRegions().stream().map(Region::getId).toList());
-        dto.setSupervisedDistrictIds(u.getSupervisedDistricts().stream().map(District::getId).toList());
-        dto.setSupervisedStructureIds(u.getSupervisedStructures().stream().map(Structure::getId).toList());
         return dto;
     }
 }

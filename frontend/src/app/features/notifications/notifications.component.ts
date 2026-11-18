@@ -48,9 +48,7 @@ import { AppNotification } from '../../core/models/models';
       <ng-container *ngFor="let n of notifications; let last = last">
         <div
           style="display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.25rem;cursor:pointer;transition:background .15s;"
-          [style.background]="!n.lu ? '#fafaf9' : 'transparent'"
-          [style.border-left]="!n.lu ? '3px solid var(--accent-color)' : '3px solid transparent'"
-          (click)="marquerLu(n)"
+          [style.background]="!n.lu ? '#fafaf9' : 'transparent'"          (click)="marquerLu(n)"
         >
           <!-- Icon -->
           <div style="flex-shrink:0;margin-top:.1rem;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;"

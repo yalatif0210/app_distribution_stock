@@ -8,8 +8,22 @@ import { ExecutionProgressionItem, LignePlan, PlanReattribution, StockSourceInfo
 export class PlanService {
   constructor(private http: HttpClient) {}
 
-  generer(periodeId: number, programmeId: number | null, regionId: number, notes?: string): Observable<PlanReattribution> {
-    return this.http.post<PlanReattribution>('/api/plans/generer', { periodeId, programmeId, regionId, notes });
+  generer(periodeId: number, programmeId: number | null, regionId: number, notes?: string,
+          remplacerBrouillon = false, analyseIa = true): Observable<PlanReattribution> {
+    return this.http.post<PlanReattribution>('/api/plans/generer',
+      { periodeId, programmeId, regionId, notes, remplacerBrouillon, analyseIa });
+  }
+
+  /** L'analyse IA est-elle configurée sur le serveur ? */
+  iaDisponible(): Observable<{ disponible: boolean }> {
+    return this.http.get<{ disponible: boolean }>('/api/plans/ia-disponible');
+  }
+
+  /** Brouillon déjà en cours pour ce périmètre, ou null (réponse 204). */
+  getBrouillon(periodeId: number, programmeId: number | null, regionId: number): Observable<PlanReattribution | null> {
+    let params = new HttpParams().set('periodeId', periodeId).set('regionId', regionId);
+    if (programmeId != null) params = params.set('programmeId', programmeId);
+    return this.http.get<PlanReattribution | null>('/api/plans/brouillon', { params });
   }
 
   getPlans(periodeId?: number, statut?: string): Observable<PlanReattribution[]> {

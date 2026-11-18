@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 public class TableauBordService {
 
     private final SaisieStockRepository saisieStockRepo;
+    private final SeuilsStatutService seuilsStatut;
     private final PlanReattributionRepository planRepo;
     private final LignePlanRepository ligneRepo;
     private final PeriodeSaisieRepository periodeRepo;
@@ -394,21 +395,6 @@ public class TableauBordService {
     }
 
     private String calculerStatut(BigDecimal msd) {
-        if (msd == null || msd.compareTo(ZERO) == 0) {
-            return "RUPTURE";
-        }
-        int cmp1 = msd.compareTo(BigDecimal.ONE);
-        if (cmp1 < 0) {
-            return "TENSION";
-        }
-        int cmp2 = msd.compareTo(new BigDecimal("2"));
-        if (cmp2 < 0) {
-            return "SURVEILLER";
-        }
-        int cmp4 = msd.compareTo(new BigDecimal("4"));
-        if (cmp4 <= 0) {
-            return "BIEN_STOCKE";
-        }
-        return "SURSTOCK";
+        return seuilsStatut.statut(msd);
     }
 }

@@ -10,8 +10,10 @@ import org.lhspla.redistribution.entity.Role;
 import org.lhspla.redistribution.entity.Utilisateur;
 import org.lhspla.redistribution.exception.GlobalExceptionHandler;
 import org.lhspla.redistribution.repository.RegionRepository;
+import org.lhspla.redistribution.repository.StructureRepository;
 import org.lhspla.redistribution.repository.UtilisateurRepository;
-import org.mockito.InjectMocks;
+import org.lhspla.redistribution.security.PerimetreService;
+import org.lhspla.redistribution.service.SeuilsStatutService;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
@@ -40,14 +42,18 @@ class ParametreControllerTest {
 
     @Mock RegionRepository regionRepo;
     @Mock UtilisateurRepository utilisateurRepo;
+    @Mock StructureRepository structureRepo;
+    @Mock SeuilsStatutService seuilsStatutService;
 
-    @InjectMocks ParametreController controller;
+    ParametreController controller;
 
     MockMvc mockMvc;
     ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
+        controller = new ParametreController(regionRepo, utilisateurRepo,
+                new PerimetreService(utilisateurRepo, structureRepo), seuilsStatutService);
         // Standalone setup : pas de contexte Spring Security chargé.
         // AuthenticationPrincipalArgumentResolver lit SecurityContextHolder.
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

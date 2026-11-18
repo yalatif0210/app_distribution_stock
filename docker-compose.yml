@@ -1,66 +1,78 @@
+# Déploiement serveur : docker compose up -d --build   (voir README.md)
+# Sur un poste de développement, docker-compose.local.yml s'ajoute par-dessus.
+
+x-logs: &logs
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
 services:
 
   db:
     image: postgres:15-alpine
-    container_name: redistribution_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: redistribution_stocks
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER:?définir DB_USER dans .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?définir DB_PASSWORD dans .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks: [interne]                        # aucun port publié, aucune sortie
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d redistribution_stocks"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d redistribution_stocks"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - app_network
+      retries: 10
+    <<: *logs
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: redistribution_backend
+    build: ./backend
+    image: redistribution-backend:${VERSION:-latest}
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      db: { condition: service_healthy }
     environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/redistribution_stocks}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/redistribution_stocks
-    expose:
-      - "8080"
-    networks:
-      - app_network
+      JWT_SECRET: ${JWT_SECRET:?définir JWT_SECRET dans .env (32 caractères minimum)}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:?définir ADMIN_INITIAL_PASSWORD dans .env}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      TZ: ${TZ:-UTC}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    # "exposition" (ordre alphabétique : premier réseau, donc passerelle par défaut)
+    # sert uniquement à la sortie vers api.mistral.ai.
+    networks: [exposition, interne]
+    deploy:
+      resources:
+        limits: { memory: 1536M }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 15s
+      timeout: 5s
+      retries: 10
       start_period: 60s
+    <<: *logs
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: redistribution_frontend
+    build: ./frontend
+    image: redistribution-frontend:${VERSION:-latest}
     restart: unless-stopped
     depends_on:
-      - backend
+      backend: { condition: service_healthy }
     ports:
-      - "80:80"
-    networks:
-      - app_network
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro            # fullchain.pem + privkey.pem => HTTPS
+    networks: [exposition, interne]
+    <<: *logs
+
+networks:
+  interne:
+    internal: true          # base et backend : aucun accès extérieur via ce réseau
+  exposition:
+    driver: bridge          # ports publiés du relais + sortie du backend vers Mistral
 
 volumes:
   postgres_data:
-
-networks:
-  app_network:
-    driver: bridge

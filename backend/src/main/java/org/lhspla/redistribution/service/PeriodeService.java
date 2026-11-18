@@ -62,6 +62,18 @@ public class PeriodeService {
         return toDTO(periodeRepo.save(periode));
     }
 
+    /** Périodes dont la région est dans {@code regionIds} ; toutes si {@code regionIds == null}. */
+    @Transactional(readOnly = true)
+    public List<PeriodeSaisieDTO> findVisibles(java.util.Set<Long> regionIds) {
+        if (regionIds == null) return findAll();
+        return periodeRepo.findAll().stream()
+                .filter(p -> p.getRegion() != null && regionIds.contains(p.getRegion().getId()))
+                .sorted(java.util.Comparator.comparing(PeriodeSaisie::getDateRas,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .map(this::toDTO)
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public List<PeriodeSaisieDTO> findByRegion(Long regionId) {
         return periodeRepo.findByRegionIdOrderByDateRasDesc(regionId)

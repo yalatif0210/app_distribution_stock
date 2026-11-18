@@ -1,4 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
+import { SeuilsStatutService } from '../../../core/services/seuils-statut.service';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -33,7 +34,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
     <!-- Header -->
     <div class="page-header">
       <h1>Saisie d'état de stock</h1>
-      <p>{{ auth.currentUser?.username }} — {{ etat?.structureNom ?? 'Chargement…' }}</p>
+      <p>{{ auth.currentUser?.username }} · {{ etat?.structureNom ?? 'Chargement…' }}</p>
     </div>
 
     <!-- Step 1 : Sélection période + programme -->
@@ -42,7 +43,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
         <mat-form-field appearance="fill" style="flex:1;min-width:220px;">
           <mat-label>Période</mat-label>
           <mat-select [(ngModel)]="selectedPeriodeId" [disabled]="loading || !!etat" (ngModelChange)="erreurSaisie = ''">
-            <mat-option [value]="null">— Choisir —</mat-option>
+            <mat-option [value]="null">Choisir</mat-option>
             <mat-option *ngFor="let p of periodes" [value]="p.id">
               {{ p.libelle ?? (p.dateRas | date:'dd/MM/yyyy') }} ({{ p.statut }})
             </mat-option>
@@ -52,8 +53,8 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
         <mat-form-field appearance="fill" style="flex:1;min-width:220px;">
           <mat-label>Programme</mat-label>
           <mat-select [(ngModel)]="selectedProgrammeId" [disabled]="loading || !!etat" (ngModelChange)="erreurSaisie = ''">
-            <mat-option [value]="null">— Choisir —</mat-option>
-            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+            <mat-option [value]="null">Choisir</mat-option>
+            <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -92,7 +93,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
         style="display:flex;align-items:center;gap:.75rem;padding:.875rem 1.25rem;background:rgba(22,163,74,.06);border:1px solid rgba(22,163,74,.25);border-radius:.5rem;margin-bottom:1rem;">
         <mat-icon style="color:#16a34a;">check_circle</mat-icon>
         <div>
-          <strong style="color:#15803d;">État soumis — lecture seule</strong>
+          <strong style="color:#15803d;">État soumis (lecture seule)</strong>
           <div style="font-size:.8rem;color:var(--text-secondary);">
             Soumis le {{ etat.dateSoumission | date:'dd/MM/yyyy à HH:mm' }}
           </div>
@@ -102,7 +103,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
       <div *ngIf="etat.statut === 'SUGGESTED'"
         style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1.25rem;background:rgba(202,138,4,.06);border:1px solid rgba(202,138,4,.2);border-radius:.5rem;margin-bottom:1rem;">
         <mat-icon style="color:#a16207;">edit_note</mat-icon>
-        <span style="font-size:.875rem;color:#a16207;font-weight:500;">Brouillon — les modifications sont sauvegardées automatiquement à chaque ligne</span>
+        <span style="font-size:.875rem;color:#a16207;font-weight:500;">Brouillon : les modifications sont sauvegardées automatiquement à chaque ligne</span>
       </div>
 
       <!-- Aucun produit configuré -->
@@ -119,7 +120,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
       <mat-card *ngIf="etat.lignes.length > 0">
         <mat-card-header style="padding:.875rem 1rem .25rem;">
           <mat-card-title style="font-size:.95rem;display:flex;align-items:center;gap:.75rem;">
-            <span>{{ etat.programmeNom }} — {{ etat.periodeLibelle }}</span>
+            <span>{{ etat.programmeNom }} · {{ etat.periodeLibelle }}</span>
             <span style="font-size:.8rem;font-weight:400;color:var(--text-secondary);">
               {{ lignesSaved }}/{{ etat.lignes.length }} lignes renseignées
             </span>
@@ -170,7 +171,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
                       style="width:90px;text-align:right;border:1px solid var(--border-color);border-radius:.25rem;padding:.25rem .5rem;font-size:.875rem;font-family:monospace;">
                     <span *ngIf="etat.statut === 'SUBMITTED'"
                       style="font-family:monospace;font-size:.875rem;">
-                      {{ ligne.stockDisponible ?? '—' }}
+                      {{ ligne.stockDisponible ?? '-' }}
                     </span>
                   </td>
 
@@ -183,7 +184,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
                       style="width:90px;text-align:right;border:1px solid var(--border-color);border-radius:.25rem;padding:.25rem .5rem;font-size:.875rem;font-family:monospace;">
                     <span *ngIf="etat.statut === 'SUBMITTED'"
                       style="font-family:monospace;font-size:.875rem;">
-                      {{ ligne.cmm ?? '—' }}
+                      {{ ligne.cmm ?? '-' }}
                     </span>
                   </td>
 
@@ -196,7 +197,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
                       [style.border-color]="(needsExpireDate(ligne) || expireDateInvalid(ligne)) ? '#dc2626' : 'var(--border-color)'"
                       style="border:1px solid var(--border-color);border-radius:.25rem;padding:.25rem .5rem;font-size:.8rem;">
                     <span *ngIf="etat.statut === 'SUBMITTED'" style="font-size:.8rem;">
-                      {{ ligne.expireDate ? (ligne.expireDate | date:'dd/MM/yyyy') : '—' }}
+                      {{ ligne.expireDate ? (ligne.expireDate | date:'dd/MM/yyyy') : '-' }}
                     </span>
                     <div *ngIf="needsExpireDate(ligne)" style="font-size:.65rem;color:#dc2626;margin-top:.15rem;">Obligatoire si stock > 0</div>
                     <div *ngIf="expireDateInvalid(ligne)" style="font-size:.65rem;color:#dc2626;margin-top:.15rem;">Doit être postérieure à la date de saisie</div>
@@ -213,7 +214,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
                       style="font-family:monospace;font-weight:700;font-size:.875rem;">
                       {{ getMsd(ligne)! | number:'1.1-1' }}
                     </span>
-                    <span *ngIf="getMsd(ligne) === null" style="color:var(--text-secondary);font-size:.8rem;">—</span>
+                    <span *ngIf="getMsd(ligne) === null" style="color:var(--text-secondary);font-size:.8rem;">-</span>
                   </td>
 
                   <!-- Statut stock -->
@@ -272,6 +273,7 @@ import { EtatStock, LigneSaisie, PeriodeSaisie, Programme } from '../../../core/
   `
 })
 export class SaisieComponent implements OnInit {
+  seuilsStatut = inject(SeuilsStatutService);
   periodes: PeriodeSaisie[] = [];
   programmes: Programme[] = [];
   etat: (EtatStock & { lignes: (LigneSaisie & { _saving?: boolean })[] }) | null = null;
@@ -419,10 +421,6 @@ export class SaisieComponent implements OnInit {
   }
 
   msdColor(msd: number): string {
-    if (msd === 0) return '#dc2626';
-    if (msd < 1) return '#ea580c';
-    if (msd < 2) return '#d97706';
-    if (msd <= 4) return '#16a34a';
-    return '#7c3aed';
+    return this.seuilsStatut.couleurMsd(msd);
   }
 }

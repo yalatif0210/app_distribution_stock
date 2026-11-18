@@ -12,6 +12,7 @@ import org.lhspla.redistribution.repository.ProgrammeRepository;
 import org.lhspla.redistribution.repository.StructureProgrammeRepository;
 import org.lhspla.redistribution.repository.StructureRepository;
 import org.lhspla.redistribution.repository.UtilisateurRepository;
+import org.lhspla.redistribution.security.PerimetreService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,6 +32,7 @@ public class StructureProgrammeController {
     private final StructureRepository structureRepo;
     private final ProgrammeRepository programmeRepo;
     private final UtilisateurRepository utilisateurRepository;
+    private final PerimetreService perimetreService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('PHARMACIEN_REGION', 'ADMIN')")
@@ -46,11 +48,7 @@ public class StructureProgrammeController {
     }
 
     private Long resolveRegionId(Long provided) {
-        if (provided != null) return provided;
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return utilisateurRepository.findByUsername(username)
-                .map(u -> u.getRegion() != null ? u.getRegion().getId() : null)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        return perimetreService.courant().resoudreRegion(provided);
     }
 
     @PostMapping
@@ -60,6 +58,7 @@ public class StructureProgrammeController {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         Utilisateur user = utilisateurRepository.findByUsername(username).orElseThrow();
 
+        perimetreService.exigerStructure(req.getStructureId());
         Structure structure = structureRepo.findById(req.getStructureId())
                 .orElseThrow(() -> BusinessException.notFound("Structure", req.getStructureId()));
         Programme programme = programmeRepo.findById(req.getProgrammeId())
@@ -92,6 +91,7 @@ public class StructureProgrammeController {
             @RequestBody Map<String, Boolean> body) {
         StructureProgramme liaison = structureProgrammeRepo.findById(id)
                 .orElseThrow(() -> BusinessException.notFound("StructureProgramme", id));
+        perimetreService.exigerStructure(liaison.getStructure().getId());
 
         Boolean actif = body.get("actif");
         if (actif != null) {

@@ -91,6 +91,9 @@ public class ReferentielService {
 
     @Transactional
     public RegionDTO saveRegion(String nom, Long id) {
+        regionRepo.findByNomIgnoreCase(nom != null ? nom.trim() : null)
+                .filter(autre -> !autre.getId().equals(id))
+                .ifPresent(autre -> { throw BusinessException.conflict("Une région « " + autre.getNom() + " » existe déjà."); });
         Region r = id != null ? regionRepo.findById(id).orElseThrow(() -> BusinessException.notFound("Region", id)) : new Region();
         r.setNom(nom);
         return toRegionDTO(regionRepo.save(r));
@@ -101,6 +104,9 @@ public class ReferentielService {
 
     @Transactional
     public DistrictDTO saveDistrict(String nom, Long regionId, Long id) {
+        districtRepo.findByNomIgnoreCaseAndRegionId(nom != null ? nom.trim() : null, regionId)
+                .filter(autre -> !autre.getId().equals(id))
+                .ifPresent(autre -> { throw BusinessException.conflict("Le district « " + autre.getNom() + " » existe déjà dans cette région."); });
         District d = id != null ? districtRepo.findById(id).orElseThrow(() -> BusinessException.notFound("District", id)) : new District();
         d.setNom(nom);
         Region region = regionRepo.findById(regionId).orElseThrow(() -> BusinessException.notFound("Region", regionId));
@@ -113,6 +119,9 @@ public class ReferentielService {
 
     @Transactional
     public StructureDTO saveStructure(String code, String nom, String type, Long districtId, Boolean active, Long id) {
+        structureRepo.findByCode(code)
+                .filter(autre -> !autre.getId().equals(id))
+                .ifPresent(autre -> { throw BusinessException.conflict("Le code de structure « " + code + " » est déjà utilisé (" + autre.getNom() + ")."); });
         boolean isNew = id == null;
         Structure s = isNew ? new Structure() : structureRepo.findById(id).orElseThrow(() -> BusinessException.notFound("Structure", id));
         s.setCode(code); s.setNom(nom); s.setType(type); s.setActive(active != null ? active : true);
@@ -130,6 +139,9 @@ public class ReferentielService {
 
     @Transactional
     public ProgrammeDTO saveProgramme(String code, String nom, String description, Boolean active, Long id) {
+        programmeRepo.findByCodeIgnoreCase(code)
+                .filter(autre -> !autre.getId().equals(id))
+                .ifPresent(autre -> { throw BusinessException.conflict("Le code de programme « " + code + " » est déjà utilisé."); });
         boolean isNew = id == null;
         Programme p = isNew ? new Programme() : programmeRepo.findById(id).orElseThrow(() -> BusinessException.notFound("Programme", id));
         p.setCode(code); p.setNom(nom); p.setDescription(description); p.setActive(active != null ? active : true);
@@ -149,6 +161,9 @@ public class ReferentielService {
 
     @Transactional
     public ProduitDTO saveProduit(String code, String nom, String unite, Long programmeId, Boolean actif, Long id) {
+        produitRepo.findByCodeIgnoreCaseAndProgrammeId(code, programmeId)
+                .filter(autre -> !autre.getId().equals(id))
+                .ifPresent(autre -> { throw BusinessException.conflict("Le code produit « " + code + " » existe déjà dans ce programme."); });
         Produit p = id != null ? produitRepo.findById(id).orElseThrow(() -> BusinessException.notFound("Produit", id)) : new Produit();
         p.setCode(code); p.setNom(nom); p.setUnite(unite); p.setActif(actif != null ? actif : true);
         Programme prog = programmeRepo.findById(programmeId).orElseThrow(() -> BusinessException.notFound("Programme", programmeId));
@@ -243,6 +258,10 @@ public class ReferentielService {
         dto.setDateRas(p.getDateRas());
         dto.setStatut(p.getStatut());
         dto.setLibelle(p.getDateRas().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        if (p.getRegion() != null) {
+            dto.setRegionId(p.getRegion().getId());
+            dto.setRegionNom(p.getRegion().getNom());
+        }
         return dto;
     }
 }

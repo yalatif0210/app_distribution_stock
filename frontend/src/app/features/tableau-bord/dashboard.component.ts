@@ -717,7 +717,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           ? plans.filter(p => p.programmeId === this.selectedProgrammeId)
           : plans;
         this.planOptions = filtered.map(p => ({
-          label: `Plan #${p.id} — ${p.statut} (${p.periodeLibelle})`,
+          label: `Plan #${p.id} : ${p.statut} (${p.periodeLibelle})`,
           value: p.id
         }));
         this.selectedPlanId = filtered.length > 0 ? filtered[0].id : null;

@@ -22,6 +22,7 @@ import { ReferentielService } from '../../core/services/referentiel.service';
 import { PeriodeService } from '../../core/services/periode.service';
 import { PlanService } from '../../core/services/plan.service';
 import { StockService } from '../../core/services/stock.service';
+import { utilisateurPayload, filtrerSites } from '../referentiel/referentiel.component';
 import {
   Region, District, Structure, Programme, Produit,
   UtilisateurDTO, PeriodeSaisie, EtatStockSummary, PlanReattribution
@@ -40,7 +41,7 @@ import {
   template: `
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
       <div>
-        <h1>Administration — Base de données</h1>
+        <h1>Administration : Base de données</h1>
         <p>Accès complet en lecture, création, modification et suppression sur toutes les entités</p>
       </div>
     </div>
@@ -230,7 +231,7 @@ import {
               <ng-container matColumnDef="username"><th mat-header-cell *matHeaderCellDef mat-sort-header>Username</th><td mat-cell *matCellDef="let u" style="font-weight:600;">{{ u.username }}</td></ng-container>
               <ng-container matColumnDef="nom"><th mat-header-cell *matHeaderCellDef mat-sort-header>Nom</th><td mat-cell *matCellDef="let u">{{ u.prenom }} {{ u.nom }}</td></ng-container>
               <ng-container matColumnDef="role"><th mat-header-cell *matHeaderCellDef mat-sort-header>Rôle</th><td mat-cell *matCellDef="let u"><span class="badge badge-ouverte" style="font-size:.65rem;">{{ u.roleNom }}</span></td></ng-container>
-              <ng-container matColumnDef="perimetre"><th mat-header-cell *matHeaderCellDef mat-sort-header>Périmètre</th><td mat-cell *matCellDef="let u" style="font-size:.8rem;">{{ u.structureNom ?? u.regionNom ?? (u.supervisedRegionIds?.length ? u.supervisedRegionIds.length + ' région(s)' : '—') }}</td></ng-container>
+              <ng-container matColumnDef="perimetre"><th mat-header-cell *matHeaderCellDef mat-sort-header>Périmètre</th><td mat-cell *matCellDef="let u" style="font-size:.8rem;">{{ u.structureNom ?? u.regionNom ?? (u.supervisedRegionIds?.length ? u.supervisedRegionIds.length + ' région(s)' : '-') }}</td></ng-container>
               <ng-container matColumnDef="actif"><th mat-header-cell *matHeaderCellDef mat-sort-header>Statut</th><td mat-cell *matCellDef="let u"><span [class]="u.actif ? 'badge badge-normal' : 'badge badge-fermee'" style="font-size:.65rem;">{{ u.actif ? 'Actif' : 'Inactif' }}</span></td></ng-container>
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef style="text-align:right;">Actions</th>
@@ -263,7 +264,7 @@ import {
             <table mat-table [dataSource]="dsPeriodes" matSort #sortPeriodes="matSort" style="width:100%;">
               <ng-container matColumnDef="id"><th mat-header-cell *matHeaderCellDef mat-sort-header>#</th><td mat-cell *matCellDef="let p">{{ p.id }}</td></ng-container>
               <ng-container matColumnDef="libelle"><th mat-header-cell *matHeaderCellDef mat-sort-header>Date RAS</th><td mat-cell *matCellDef="let p" style="font-weight:500;">{{ p.libelle ?? p.dateRas }}</td></ng-container>
-              <ng-container matColumnDef="region"><th mat-header-cell *matHeaderCellDef mat-sort-header>Région</th><td mat-cell *matCellDef="let p" style="font-size:.8rem;">{{ p.regionNom ?? '—' }}</td></ng-container>
+              <ng-container matColumnDef="region"><th mat-header-cell *matHeaderCellDef mat-sort-header>Région</th><td mat-cell *matCellDef="let p" style="font-size:.8rem;">{{ p.regionNom ?? '-' }}</td></ng-container>
               <ng-container matColumnDef="statut"><th mat-header-cell *matHeaderCellDef mat-sort-header>Statut</th><td mat-cell *matCellDef="let p"><span [class]="p.statut === 'OUVERTE' ? 'badge badge-ouverte' : 'badge badge-fermee'" style="font-size:.65rem;">{{ p.statut }}</span></td></ng-container>
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef style="text-align:right;">Actions</th>
@@ -288,7 +289,7 @@ import {
               <mat-form-field appearance="fill" style="min-width:200px;">
                 <mat-label>Période</mat-label>
                 <mat-select [(ngModel)]="etatsPeriodeId" (selectionChange)="loadEtats()">
-                  <mat-option [value]="null">— Choisir —</mat-option>
+                  <mat-option [value]="null">Choisir</mat-option>
                   <mat-option *ngFor="let p of dsPeriodes.data" [value]="p.id">{{ p.libelle ?? p.dateRas }}</mat-option>
                 </mat-select>
               </mat-form-field>
@@ -446,7 +447,7 @@ import {
           <mat-form-field appearance="fill" style="width:100%;">
             <mat-label>Programme</mat-label>
             <mat-select [(ngModel)]="form['programmeId']" required>
-              <mat-option *ngFor="let p of dsProgrammes.data" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+              <mat-option *ngFor="let p of dsProgrammes.data" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
             </mat-select>
           </mat-form-field>
         </ng-container>
@@ -485,15 +486,22 @@ import {
           </mat-form-field>
           <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;" *ngIf="formRoleName() === 'GESTIONNAIRE'">
             <mat-label>Structure</mat-label>
-            <mat-select [(ngModel)]="form['structureId']">
-              <mat-option [value]="null">— Aucune —</mat-option>
-              <mat-option *ngFor="let s of dsStructures.data" [value]="s.id">{{ s.code }} — {{ s.nom }}</mat-option>
+            <mat-select [(ngModel)]="form['structureId']" (openedChange)="ouvertureRechercheSite($event, rechSite)">
+              <div style="position:sticky;top:0;z-index:1;background:#fff;padding:.5rem .75rem;border-bottom:1px solid #e5e7eb;">
+                <input #rechSite type="text" placeholder="Rechercher un site..." autocomplete="off"
+                       style="width:100%;box-sizing:border-box;padding:.4rem .5rem;border:1px solid #d1d5db;border-radius:4px;font:inherit;"
+                       [value]="rechercheSite" (input)="rechercheSite = rechSite.value"
+                       (keydown)="$event.stopPropagation()" (click)="$event.stopPropagation()">
+              </div>
+              <mat-option [value]="null">Aucune</mat-option>
+              <mat-option *ngFor="let s of filtrerSites(dsStructures.data, rechercheSite, form['structureId'])" [value]="s.id">{{ s.code }} - {{ s.nom }}</mat-option>
+              <mat-option *ngIf="filtrerSites(dsStructures.data, rechercheSite, form['structureId']).length === 0" disabled>Aucun site trouvé</mat-option>
             </mat-select>
           </mat-form-field>
           <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;" *ngIf="formRoleName() === 'PHARMACIEN_REGION'">
             <mat-label>Région</mat-label>
             <mat-select [(ngModel)]="form['regionId']">
-              <mat-option [value]="null">— Aucune —</mat-option>
+              <mat-option [value]="null">Aucune</mat-option>
               <mat-option *ngFor="let r of dsRegions.data" [value]="r.id">{{ r.nom }}</mat-option>
             </mat-select>
           </mat-form-field>
@@ -502,18 +510,6 @@ import {
               <mat-label>Régions supervisées</mat-label>
               <mat-select [(ngModel)]="form['supervisedRegionIds']" multiple>
                 <mat-option *ngFor="let r of dsRegions.data" [value]="r.id">{{ r.nom }}</mat-option>
-              </mat-select>
-            </mat-form-field>
-            <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
-              <mat-label>Districts supervisés</mat-label>
-              <mat-select [(ngModel)]="form['supervisedDistrictIds']" multiple>
-                <mat-option *ngFor="let d of dsDistricts.data" [value]="d.id">{{ d.nom }} ({{ d.regionNom }})</mat-option>
-              </mat-select>
-            </mat-form-field>
-            <mat-form-field appearance="fill" style="width:100%;">
-              <mat-label>Sites supervisés</mat-label>
-              <mat-select [(ngModel)]="form['supervisedStructureIds']" multiple>
-                <mat-option *ngFor="let s of dsStructures.data" [value]="s.id">{{ s.code }} — {{ s.nom }}</mat-option>
               </mat-select>
             </mat-form-field>
           </ng-container>
@@ -562,6 +558,14 @@ export class AdminSwaggerComponent implements OnInit, AfterViewInit {
   dialogTitle = '';
   form: Record<string, any> = {};
   saving = false;
+  rechercheSite = '';
+  readonly filtrerSites = filtrerSites;
+
+  /** À l'ouverture de la liste des sites : recherche vidée et curseur placé dans le champ. */
+  ouvertureRechercheSite(ouvert: boolean, champ: HTMLInputElement): void {
+    this.rechercheSite = '';
+    if (ouvert) setTimeout(() => champ.focus());
+  }
 
   @ViewChild('editDialog') editDialogRef!: TemplateRef<any>;
   @ViewChild('pagRegions') pagRegions!: MatPaginator;
@@ -636,8 +640,8 @@ export class AdminSwaggerComponent implements OnInit, AfterViewInit {
 
   openDialog(type: string, item?: any): void {
     this.dialogType = type;
-    this.dialogTitle = item ? `Modifier — ${type}` : `Nouveau — ${type}`;
-    this.form = item ? { ...item } : { supervisedRegionIds: [], supervisedDistrictIds: [], supervisedStructureIds: [] };
+    this.dialogTitle = item ? `Modifier : ${type}` : `Nouveau : ${type}`;
+    this.form = item ? { ...item } : { supervisedRegionIds: [] };
     this.dialog.open(this.editDialogRef, { width: '600px', disableClose: false });
   }
 
@@ -662,9 +666,11 @@ export class AdminSwaggerComponent implements OnInit, AfterViewInit {
       case 'produit':
         obs$ = f['id'] ? this.adminService.updateProduit(f['id'], f as any) : this.adminService.createProduit(f as any);
         break;
-      case 'utilisateur':
-        obs$ = f['id'] ? this.adminService.updateUtilisateur(f['id'], f) : this.adminService.createUtilisateur(f);
+      case 'utilisateur': {
+        const payload = utilisateurPayload(f, this.formRoleName());
+        obs$ = f['id'] ? this.adminService.updateUtilisateur(f['id'], payload) : this.adminService.createUtilisateur(payload);
         break;
+      }
       case 'periode':
         obs$ = this.adminService.createPeriode(f['dateRas'], f['regionId']);
         break;

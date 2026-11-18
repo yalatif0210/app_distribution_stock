@@ -9,6 +9,8 @@ import org.lhspla.redistribution.entity.Utilisateur;
 import org.lhspla.redistribution.exception.BusinessException;
 import org.lhspla.redistribution.repository.RegionRepository;
 import org.lhspla.redistribution.repository.UtilisateurRepository;
+import org.lhspla.redistribution.security.PerimetreService;
+import org.lhspla.redistribution.service.SeuilsStatutService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,6 +24,20 @@ public class ParametreController {
 
     private final RegionRepository regionRepo;
     private final UtilisateurRepository utilisateurRepo;
+    private final PerimetreService perimetreService;
+    private final SeuilsStatutService seuilsStatutService;
+
+    /** Seuils de MSD des statuts de stock. Lisibles par tous : les vues s'en servent pour les couleurs. */
+    @GetMapping("/statuts")
+    public ResponseEntity<SeuilsStatutService.Seuils> getSeuilsStatut() {
+        return ResponseEntity.ok(seuilsStatutService.seuils());
+    }
+
+    @PutMapping("/statuts")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<SeuilsStatutService.Seuils> updateSeuilsStatut(@RequestBody SeuilsStatutService.Seuils req) {
+        return ResponseEntity.ok(seuilsStatutService.modifier(req.tension(), req.surveiller(), req.surstock()));
+    }
 
     @GetMapping("/region")
     @PreAuthorize("hasAnyRole('PHARMACIEN_REGION', 'ADMIN')")
@@ -44,17 +60,8 @@ public class ParametreController {
     }
 
     private Region resolveRegion(String username, Long requestedRegionId) {
-        Utilisateur utilisateur = utilisateurRepo.findByUsername(username)
-                .orElseThrow(() -> BusinessException.notFound("Utilisateur", -1L));
-
-        final Long regionId;
-        if (requestedRegionId != null) {
-            regionId = requestedRegionId;
-        } else {
-            if (utilisateur.getRegion() == null)
-                throw BusinessException.badRequest("Aucune région associée à cet utilisateur. Précisez un regionId.");
-            regionId = utilisateur.getRegion().getId();
-        }
+        // Un pharmacien ne lit ni ne modifie que les paramètres de sa région
+        final Long regionId = perimetreService.courant().regionObligatoire(requestedRegionId);
 
         return regionRepo.findById(regionId)
                 .orElseThrow(() -> BusinessException.notFound("Région", regionId));

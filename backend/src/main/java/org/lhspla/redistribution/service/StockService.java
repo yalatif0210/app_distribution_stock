@@ -156,7 +156,7 @@ public class StockService {
 
     public LigneSaisieDTO saveLigne(LigneSaisieRequest req, String username) {
         Utilisateur user = utilisateurRepo.findByUsername(username).orElseThrow();
-        EtatStock etat = etatStockRepo.findById(req.getEtatId())
+        EtatStock etat = etatStockRepo.verrouiller(req.getEtatId())
                 .orElseThrow(() -> BusinessException.notFound("EtatStock", req.getEtatId()));
 
         if ("GESTIONNAIRE".equals(user.getRole().getName())) {
@@ -169,7 +169,7 @@ public class StockService {
         }
 
         if ("SUBMITTED".equals(etat.getStatut())) {
-            throw BusinessException.badRequest("Cet état a été soumis — modification impossible");
+            throw BusinessException.badRequest("Cet état a été soumis : modification impossible");
         }
 
         Produit produit = produitRepo.findById(req.getProduitId())
@@ -210,10 +210,11 @@ public class StockService {
 
     public EtatStockDTO submitEtat(Long etatId, String username) {
         Utilisateur user = utilisateurRepo.findByUsername(username).orElseThrow();
-        EtatStock etat = etatStockRepo.findById(etatId)
+        EtatStock etat = etatStockRepo.verrouiller(etatId)
                 .orElseThrow(() -> BusinessException.notFound("EtatStock", etatId));
         if ("SUBMITTED".equals(etat.getStatut())) {
-            throw BusinessException.badRequest("Déjà soumis");
+            // Déjà soumis (double envoi) : on renvoie l'état tel quel
+            return getEtat(etat.getPeriode().getId(), etat.getProgramme().getId(), etat.getStructure().getId());
         }
         etat.setStatut("SUBMITTED");
         etat.setSoumispar(user);
@@ -222,8 +223,16 @@ public class StockService {
         return getEtat(etat.getPeriode().getId(), etat.getProgramme().getId(), etat.getStructure().getId());
     }
 
-    public EtatStockDTO reopenEtat(Long etatId, String username) {
+    /** Structure d'un état de stock, pour le contrôle de périmètre. */
+    @Transactional(readOnly = true)
+    public Long structureDeLEtat(Long etatId) {
         EtatStock etat = etatStockRepo.findById(etatId)
+                .orElseThrow(() -> BusinessException.notFound("EtatStock", etatId));
+        return etat.getStructure() != null ? etat.getStructure().getId() : null;
+    }
+
+    public EtatStockDTO reopenEtat(Long etatId, String username) {
+        EtatStock etat = etatStockRepo.verrouiller(etatId)
                 .orElseThrow(() -> BusinessException.notFound("EtatStock", etatId));
         etat.setStatut("SUGGESTED");
         etat.setDateSoumission(null);
@@ -318,7 +327,7 @@ public class StockService {
         SaisieStock saisie = saisieStockRepo.findById(id)
                 .orElseThrow(() -> BusinessException.notFound("SaisieStock", id));
         if (saisie.getEtat() != null && "SUBMITTED".equals(saisie.getEtat().getStatut())) {
-            throw BusinessException.badRequest("État soumis — modification impossible");
+            throw BusinessException.badRequest("État soumis : modification impossible");
         }
         saisie.setStockDisponible(req.getStockDisponible());
         saisie.setCmm(req.getCmm());

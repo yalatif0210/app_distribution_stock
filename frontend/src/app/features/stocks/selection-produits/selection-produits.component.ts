@@ -32,9 +32,9 @@ import { Programme, ProduitSelection } from '../../../core/models/models';
         <mat-form-field appearance="fill" style="width:100%;max-width:480px;">
           <mat-label>Programme</mat-label>
           <mat-select [(ngModel)]="selectedProgrammeId" (ngModelChange)="onProgrammeChange($event)">
-            <mat-option [value]="null">— Choisir un programme —</mat-option>
+            <mat-option [value]="null">Choisir un programme</mat-option>
             <mat-option *ngFor="let p of programmes" [value]="p.id">
-              {{ p.code }} — {{ p.nom }}
+              {{ p.code }} - {{ p.nom }}
             </mat-option>
           </mat-select>
         </mat-form-field>

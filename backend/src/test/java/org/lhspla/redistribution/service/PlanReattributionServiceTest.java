@@ -18,6 +18,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,17 +40,71 @@ class PlanReattributionServiceTest {
 
     @InjectMocks private PlanReattributionService service;
 
+    // ── generer — un seul brouillon par périmètre ────────────────────────────────
+
+    @Test
+    void generer_refuse_si_un_brouillon_existe_sans_demande_de_remplacement() {
+        when(periodeRepo.verrouiller(1L)).thenReturn(Optional.of(new PeriodeSaisie()));
+        when(regionRepo.findById(1L)).thenReturn(Optional.of(new Region()));
+        when(planRepo.existsPlanActifFor(1L, 1L, 1L)).thenReturn(false);
+        PlanReattribution brouillon = planAvecStatut("BROUILLON");
+        brouillon.setId(6L);
+        when(planRepo.findBrouillons(1L, 1L, 1L)).thenReturn(List.of(brouillon));
+
+        org.lhspla.redistribution.dto.request.PlanGenerationRequest req =
+                new org.lhspla.redistribution.dto.request.PlanGenerationRequest();
+        req.setPeriodeId(1L); req.setProgrammeId(1L); req.setRegionId(1L); req.setAnalyseIa(false);
+
+        assertThatThrownBy(() -> service.generer(req, "pharmacien1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("n° 6");
+        verify(planRepo, never()).deleteAll(any());
+        verify(planRepo, never()).save(any());
+    }
+
+    @Test
+    void generer_en_mode_IA_bascule_en_manuel_si_l_IA_n_est_pas_configuree() {
+        PeriodeSaisie periode = new PeriodeSaisie();
+        when(periodeRepo.verrouiller(1L)).thenReturn(Optional.of(periode));
+        when(regionRepo.findById(1L)).thenReturn(Optional.of(new Region()));
+        when(programmeRepo.findById(1L)).thenReturn(Optional.of(new Programme()));
+        org.lhspla.redistribution.dto.response.AnalyseResultatDTO analyse =
+                new org.lhspla.redistribution.dto.response.AnalyseResultatDTO();
+        analyse.setProduits(List.of(new org.lhspla.redistribution.dto.response.AnalyseResultatDTO.AnalyseProduitDTO()));
+        when(analyseStockService.analyserStocks(1L, 1L, 1L)).thenReturn(analyse);
+        when(mistralIaService.estConfiguree()).thenReturn(false);
+        when(planRepo.save(any(PlanReattribution.class))).thenAnswer(inv -> {
+            PlanReattribution p = inv.getArgument(0);
+            p.setId(42L);
+            when(planRepo.findById(42L)).thenReturn(Optional.of(p));
+            return p;
+        });
+
+        org.lhspla.redistribution.dto.request.PlanGenerationRequest req =
+                new org.lhspla.redistribution.dto.request.PlanGenerationRequest();
+        req.setPeriodeId(1L); req.setProgrammeId(1L); req.setRegionId(1L); req.setAnalyseIa(true);
+
+        var plan = service.generer(req, "pharmacien1");
+
+        assertThat(plan.isBasculeManuel()).isTrue();
+        assertThat(plan.getMotifBascule()).contains("pas configurée");
+        assertThat(plan.getGenereParlA()).isFalse();
+        verify(mistralIaService, never()).genererPlan(any(), anyDouble());
+    }
+
     // ── supprimerLigne — plan BROUILLON ──────────────────────────────────────────
 
     @Test
     void supprimerLigne_accepte_tout_role_si_plan_est_brouillon() {
         PlanReattribution plan = planAvecStatut("BROUILLON");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of());
+        LignePlan ligne = ligneDuPlan(99L);
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
+        when(ligneRepo.findById(99L)).thenReturn(Optional.of(ligne));
 
         service.supprimerLigne(1L, 99L, "gestionnaire01");
 
-        verify(ligneRepo).deleteById(99L);
+        verify(ligneRepo).delete(ligne);
     }
 
     // ── supprimerLigne — plan VALIDE, restriction de rôle ───────────────────────
@@ -57,39 +112,44 @@ class PlanReattributionServiceTest {
     @Test
     void supprimerLigne_interdit_au_gestionnaire_sur_plan_valide() {
         PlanReattribution plan = planAvecStatut("VALIDE");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(utilisateurRepo.findByUsername("gestionnaire01"))
                 .thenReturn(Optional.of(utilisateurAvecRole("GESTIONNAIRE")));
 
         assertThatThrownBy(() -> service.supprimerLigne(1L, 99L, "gestionnaire01"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("superviseur");
+                .hasMessageContaining("administrateur");
     }
 
     @Test
-    void supprimerLigne_autorise_le_superviseur_sur_plan_valide() {
+    void supprimerLigne_interdit_au_superviseur_sur_plan_valide() {
         PlanReattribution plan = planAvecStatut("VALIDE");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(utilisateurRepo.findByUsername("superviseur01"))
                 .thenReturn(Optional.of(utilisateurAvecRole("SUPERVISEUR")));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of());
 
-        service.supprimerLigne(1L, 99L, "superviseur01");
-
-        verify(ligneRepo).deleteById(99L);
+        assertThatThrownBy(() -> service.supprimerLigne(1L, 99L, "superviseur01"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("administrateur");
+        verify(ligneRepo, never()).delete(any());
     }
 
     @Test
     void supprimerLigne_autorise_l_admin_sur_plan_valide() {
         PlanReattribution plan = planAvecStatut("VALIDE");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(utilisateurRepo.findByUsername("admin_sys"))
                 .thenReturn(Optional.of(utilisateurAvecRole("ADMIN")));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of());
+        LignePlan ligne = ligneDuPlan(99L);
+        when(ligneRepo.findById(99L)).thenReturn(Optional.of(ligne));
+        lenient().when(ligneRepo.findByPlanId(1L)).thenReturn(List.of());
 
         service.supprimerLigne(1L, 99L, "admin_sys");
 
-        verify(ligneRepo).deleteById(99L);
+        verify(ligneRepo).delete(ligne);
     }
 
     // ── supprimerLigne — plan CLOTURE ────────────────────────────────────────────
@@ -97,7 +157,8 @@ class PlanReattributionServiceTest {
     @Test
     void supprimerLigne_refuse_si_plan_est_cloture() {
         PlanReattribution plan = planAvecStatut("CLOTURE");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
 
         assertThatThrownBy(() -> service.supprimerLigne(1L, 99L, "n_importe_qui"))
                 .isInstanceOf(BusinessException.class)
@@ -109,7 +170,8 @@ class PlanReattributionServiceTest {
     @Test
     void executerLigne_refuse_si_plan_est_en_brouillon() {
         PlanReattribution plan = planAvecStatut("BROUILLON");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
 
         ExecutionRequest req = executionRequest("80", null);
 
@@ -124,7 +186,8 @@ class PlanReattributionServiceTest {
     void executerLigne_passe_a_EXECUTE_quand_quantite_atteint_proposee() {
         PlanReattribution plan = planAvecStatut("VALIDE");
         LignePlan ligne = ligneAvecQuantiteProposee("100");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
         when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
@@ -141,7 +204,8 @@ class PlanReattributionServiceTest {
     void executerLigne_passe_a_EXECUTE_quand_quantite_depasse_proposee() {
         PlanReattribution plan = planAvecStatut("VALIDE");
         LignePlan ligne = ligneAvecQuantiteProposee("100");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
         when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
@@ -158,7 +222,8 @@ class PlanReattributionServiceTest {
     void executerLigne_passe_a_PARTIEL_quand_quantite_inferieure_a_proposee() {
         PlanReattribution plan = planAvecStatut("VALIDE");
         LignePlan ligne = ligneAvecQuantiteProposee("100");
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
         when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
@@ -179,7 +244,8 @@ class PlanReattributionServiceTest {
         LignePlan l1 = ligneAvecStatut("EXECUTE");
         LignePlan l2 = ligneAvecStatut("EXECUTE");
 
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(ligneRepo.findById(1L)).thenReturn(Optional.of(l1));
         when(ligneRepo.save(any(LignePlan.class))).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(l1, l2));
@@ -201,7 +267,8 @@ class PlanReattributionServiceTest {
         LignePlan l1 = ligneAvecStatut("EXECUTE");
         LignePlan l2 = ligneAvecStatut("EN_ATTENTE"); // pas encore terminée
 
-        when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
         when(ligneRepo.findById(1L)).thenReturn(Optional.of(l1));
         when(ligneRepo.save(any(LignePlan.class))).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(l1, l2));
@@ -223,9 +290,17 @@ class PlanReattributionServiceTest {
         return plan;
     }
 
+    private LignePlan ligneDuPlan(Long id) {
+        LignePlan l = new LignePlan();
+        l.setId(id);
+        l.setPlan(planAvecStatut("BROUILLON"));
+        return l;
+    }
+
     private LignePlan ligneAvecQuantiteProposee(String qt) {
         LignePlan l = new LignePlan();
         l.setId(1L);
+        l.setPlan(planAvecStatut("VALIDE"));
         l.setStatut("EN_ATTENTE");
         l.setQuantiteProposee(new BigDecimal(qt));
         l.setQuantiteExecutee(BigDecimal.ZERO);
@@ -235,6 +310,7 @@ class PlanReattributionServiceTest {
     private LignePlan ligneAvecStatut(String statut) {
         LignePlan l = new LignePlan();
         l.setId(1L);
+        l.setPlan(planAvecStatut("VALIDE"));
         l.setStatut(statut);
         l.setQuantiteProposee(new BigDecimal("100"));
         l.setQuantiteExecutee(statut.equals("EXECUTE") ? new BigDecimal("100") : BigDecimal.ZERO);

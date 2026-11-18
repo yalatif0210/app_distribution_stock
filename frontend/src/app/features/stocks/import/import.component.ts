@@ -31,7 +31,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
   template: `
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
       <div>
-        <h1>Import Excel — Stocks</h1>
+        <h1>Import Excel : Stocks</h1>
         <p>Importez les données de stock depuis un fichier Excel</p>
       </div>
       <a mat-stroked-button routerLink="/stocks/tableau-bord">
@@ -60,7 +60,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
             <mat-label>Programme *</mat-label>
             <mat-select [(ngModel)]="programmeId">
               <mat-option [value]="null">-- Sélectionner --</mat-option>
-              <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} — {{ p.nom }}</mat-option>
+              <mat-option *ngFor="let p of programmes" [value]="p.id">{{ p.code }} - {{ p.nom }}</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -69,7 +69,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
         <div *ngIf="programmeId" style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;background:rgba(79,70,229,.05);border:1px solid rgba(79,70,229,.2);border-radius:.375rem;margin-bottom:.75rem;">
           <mat-icon style="color:var(--accent-color);">download</mat-icon>
           <div style="flex:1;">
-            <div style="font-size:.875rem;font-weight:500;color:var(--text-primary);">Étape 1 — Télécharger le modèle Excel pré-rempli</div>
+            <div style="font-size:.875rem;font-weight:500;color:var(--text-primary);">Étape 1 : Télécharger le modèle Excel pré-rempli</div>
             <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.1rem;">Contient les produits de votre programme. Remplissez les colonnes Stock, CMM et Date péremption.</div>
           </div>
           <button mat-stroked-button color="primary" (click)="telechargerModele()" [disabled]="downloadingTemplate">
@@ -82,7 +82,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
         <!-- Étape 2 : choisir le fichier rempli -->
         <div style="margin-bottom:1rem;">
           <div style="font-size:.825rem;font-weight:600;color:var(--text-secondary);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em;">
-            Étape 2 — Importer le fichier rempli (.xlsx) *
+            Étape 2 : Importer le fichier rempli (.xlsx) *
           </div>
           <label style="display:flex;align-items:center;gap:.75rem;padding:.875rem 1rem;border:2px dashed var(--border-color);border-radius:.375rem;cursor:pointer;transition:border-color .15s;"
                  [style.border-color]="fichier ? '#16a34a' : ''"
@@ -115,7 +115,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
       <mat-card-header style="padding:.875rem 1rem .25rem;background:rgba(220,38,38,.04);border-bottom:1px solid rgba(220,38,38,.15);">
         <mat-card-title style="display:flex;align-items:center;gap:.75rem;font-size:.95rem;color:#b91c1c;">
           <mat-icon style="color:#dc2626;">cancel</mat-icon>
-          Import rejeté — {{ erreurs.length }} ligne(s) en erreur
+          Import rejeté : {{ erreurs.length }} ligne(s) en erreur
         </mat-card-title>
       </mat-card-header>
       <mat-card-content style="padding:.75rem 1rem;">
@@ -136,7 +136,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
             <tbody>
               <tr *ngFor="let e of erreurs" style="border-bottom:1px solid rgba(220,38,38,.1);">
                 <td style="padding:.4rem .75rem;font-family:monospace;font-weight:600;">{{ e.numLigne }}</td>
-                <td style="padding:.4rem .75rem;"><code style="color:var(--accent-color);">{{ e.produitCode || '—' }}</code></td>
+                <td style="padding:.4rem .75rem;"><code style="color:var(--accent-color);">{{ e.produitCode || '-' }}</code></td>
                 <td style="padding:.4rem .75rem;color:#991b1b;">{{ e.regle }}</td>
                 <td style="padding:.4rem .75rem;color:var(--text-secondary);font-family:monospace;font-size:.78rem;">{{ e.valeurs }}</td>
               </tr>
@@ -188,7 +188,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
           </ng-container>
           <ng-container matColumnDef="expireDate">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>Date péremption</th>
-            <td mat-cell *matCellDef="let s" style="font-size:.82rem;">{{ s.expireDate ? (s.expireDate | date:'dd/MM/yyyy') : '—' }}</td>
+            <td mat-cell *matCellDef="let s" style="font-size:.82rem;">{{ s.expireDate ? (s.expireDate | date:'dd/MM/yyyy') : '-' }}</td>
           </ng-container>
           <ng-container matColumnDef="statut">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>Statut</th>
@@ -280,7 +280,7 @@ export class ImportComponent implements OnInit, AfterViewInit {
         if (!resultat.success) {
           this.erreurs = resultat.erreurs;
           this.snackBar.open(
-            `Import rejeté — ${resultat.erreurs.length} erreur(s) détectée(s). Aucune ligne importée.`,
+            `Import rejeté : ${resultat.erreurs.length} erreur(s) détectée(s). Aucune ligne importée.`,
             'Fermer', { duration: 6000 }
           );
         } else {

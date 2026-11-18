@@ -12,6 +12,16 @@ import java.util.List;
 @Repository
 public interface LignePlanRepository extends JpaRepository<LignePlan, Long> {
     List<LignePlan> findByPlanId(Long planId);
+
+    /** Ligne active (non annulée) d'un plan pour un même mouvement produit / source / cible. */
+    @Query("""
+        SELECT l FROM LignePlan l
+        WHERE l.plan.id = :planId AND l.produit.id = :produitId
+          AND l.structureSource.id = :sourceId AND l.structureCible.id = :cibleId
+          AND l.statut <> 'ANNULE'
+    """)
+    List<LignePlan> findMouvement(@Param("planId") Long planId, @Param("produitId") Long produitId,
+                                  @Param("sourceId") Long sourceId, @Param("cibleId") Long cibleId);
     List<LignePlan> findByStatutAndCreatedAtBefore(String statut, LocalDateTime date);
 
     /**

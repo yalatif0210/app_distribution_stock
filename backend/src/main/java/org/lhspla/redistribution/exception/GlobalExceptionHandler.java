@@ -42,6 +42,26 @@ public class GlobalExceptionHandler {
         return buildError("UNAUTHORIZED", "Identifiants incorrects", null, HttpStatus.UNAUTHORIZED);
     }
 
+    /** Contrainte d'unicité ou référence violée : en pratique un doublon ou un élément encore utilisé. */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleIntegrite(org.springframework.dao.DataIntegrityViolationException ex) {
+        String etat = ex.getMostSpecificCause() instanceof java.sql.SQLException sql ? sql.getSQLState() : null;
+        log.warn("Contrainte de base violée ({}) : {}", etat, ex.getMostSpecificCause().getMessage());
+        String message = "23503".equals(etat)
+                ? "Cet élément est encore utilisé ailleurs : opération impossible."
+                : "Cet enregistrement existe déjà.";
+        return buildError("CONFLICT", message, null, HttpStatus.CONFLICT);
+    }
+
+    /** Verrou non obtenu ou modification concurrente : l'utilisateur peut réessayer. */
+    @ExceptionHandler({org.springframework.dao.PessimisticLockingFailureException.class,
+                       org.springframework.orm.ObjectOptimisticLockingFailureException.class})
+    public ResponseEntity<Map<String, Object>> handleConcurrence(Exception ex) {
+        log.warn("Accès concurrent : {}", ex.getMessage());
+        return buildError("CONFLICT", "Cet élément est modifié en même temps par une autre action. Réessayez.",
+                null, HttpStatus.CONFLICT);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         log.error("Erreur inattendue", ex);

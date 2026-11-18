@@ -14,7 +14,7 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(of = "id")
-@ToString(exclude = {"supervisedRegions", "supervisedDistricts", "supervisedStructures"})
+@ToString(exclude = {"supervisedRegions"})
 public class Utilisateur {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -58,16 +58,4 @@ public class Utilisateur {
         joinColumns = @JoinColumn(name = "utilisateur_id"),
         inverseJoinColumns = @JoinColumn(name = "region_id"))
     private Set<Region> supervisedRegions = new HashSet<>();
-
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "superviseur_districts",
-        joinColumns = @JoinColumn(name = "utilisateur_id"),
-        inverseJoinColumns = @JoinColumn(name = "district_id"))
-    private Set<District> supervisedDistricts = new HashSet<>();
-
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "superviseur_structures",
-        joinColumns = @JoinColumn(name = "utilisateur_id"),
-        inverseJoinColumns = @JoinColumn(name = "structure_id"))
-    private Set<Structure> supervisedStructures = new HashSet<>();
 }

@@ -8,7 +8,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let httpMock: HttpTestingController;
 
-  // Réponse factice — ne jamais utiliser un vrai token JWT ici
+  // Réponse factice : ne jamais utiliser un vrai token JWT ici
   const FAKE_AUTH_RESPONSE: AuthResponse = {
     token:          'PLACEHOLDER_JWT_TOKEN_FOR_UNIT_TESTS_ONLY',
     username:       'pharmacien_test',
