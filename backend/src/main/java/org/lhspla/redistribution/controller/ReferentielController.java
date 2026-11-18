@@ -22,6 +22,7 @@ public class ReferentielController {
 
     private final ReferentielService referentielService;
     private final ImportReferentielService importService;
+    private final org.lhspla.redistribution.service.GabaritExcelService gabaritExcelService;
     private final PerimetreService perimetreService;
 
     // Lecture du référentiel géographique limitée au périmètre de l'utilisateur :
@@ -197,6 +198,26 @@ public class ReferentielController {
     }
 
     // ─── IMPORT EXCEL ─────────────────────────────────────────────────────────────
+
+    @GetMapping("/import/geo/gabarit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<byte[]> gabaritGeo() {
+        return fichierExcel(gabaritExcelService.gabaritGeo(), "gabarit_import_geo.xlsx");
+    }
+
+    @GetMapping("/import/catalogue/gabarit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<byte[]> gabaritCatalogue() {
+        return fichierExcel(gabaritExcelService.gabaritCatalogue(), "gabarit_import_catalogue.xlsx");
+    }
+
+    private static ResponseEntity<byte[]> fichierExcel(byte[] contenu, String nom) {
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nom + "\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(contenu);
+    }
 
     @PostMapping("/import/geo")
     @PreAuthorize("hasRole('ADMIN')")

@@ -4,6 +4,21 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.1.0] - 2026-11-18
+
+### Ajouté
+- Gabarits Excel téléchargeables pour l'Import Géo et l'Import Catalogue : en-têtes exacts,
+  listes déroulantes (types de structure, unités), longueurs contrôlées, mode d'emploi et
+  rappel du référentiel existant. Aucune ligne d'exemple dans la feuille importée.
+- Gabarit de saisie des stocks enrichi : colonnes produit protégées, stock et CMM positifs,
+  date de péremption future contrôlée dans Excel, mode d'emploi.
+
+### Corrigé
+- Import Géo : un type vide créait la valeur inconnue « CS » (désormais CENTRE_SANTE) ;
+  type invalide ou code trop long signalés ligne par ligne.
+- Import des stocks : un onglet supplémentaire faisait rejeter le fichier ; un code produit
+  présent dans deux programmes faisait échouer l'import (recherche dans le programme importé).
+
 ## [1.0.0] - 2026-11-18
 
 Première version en production : https://redistribution.lhspla-ci.org

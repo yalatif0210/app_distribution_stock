@@ -46,6 +46,16 @@ export class ReferentielService {
     return this.http.post<ImportResult>('/api/referentiel/import/geo', fd);
   }
 
+  /** Gabarit Excel de l'import Géo (en-têtes exacts, listes, référentiel existant). */
+  gabaritGeo(): Observable<Blob> {
+    return this.http.get('/api/referentiel/import/geo/gabarit', { responseType: 'blob' });
+  }
+
+  /** Gabarit Excel de l'import Catalogue. */
+  gabaritCatalogue(): Observable<Blob> {
+    return this.http.get('/api/referentiel/import/catalogue/gabarit', { responseType: 'blob' });
+  }
+
   importCatalogue(file: File): Observable<ImportResult> {
     const fd = new FormData();
     fd.append('file', file);

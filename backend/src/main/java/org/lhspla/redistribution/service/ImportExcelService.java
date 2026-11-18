@@ -1,5 +1,7 @@
 package org.lhspla.redistribution.service;
 
+import org.apache.poi.ss.util.CellRangeAddressList;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
@@ -52,56 +54,95 @@ public class ImportExcelService {
     // ─── Génération du modèle ────────────────────────────────────────────────
 
     public byte[] generateTemplate(Long structureId, Long programmeId) {
-        List<Produit> produits = sppRepo.findActiveProduits(structureId, programmeId);
-        String programmeCode = programmeRepo.findById(programmeId)
-                .map(Programme::getCode).orElse("PROG");
+        List<Produit> produits = sppRepo.findActiveProduits(structureId, programmeId).stream()
+                .sorted(java.util.Comparator.comparing(Produit::getNom)).toList();
+        Programme programme = programmeRepo.findById(programmeId).orElse(null);
+        String programmeCode = programme != null ? programme.getCode() : "PROG";
 
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
-            XSSFSheet sheet = wb.createSheet("Stock " + programmeCode);
+            GabaritExcelService.Styles st = new GabaritExcelService.Styles(wb);
+            // Feuille lue par l'import : la première, signée par le programme
+            XSSFSheet sheet = wb.createSheet(nomFeuille("Stock " + programmeCode));
+            GabaritExcelService.entetes(sheet, st, new String[]{"Code Produit", "Nom Produit", "Unité",
+                    "Stock Disponible *", "CMM", "Date Péremption (JJ/MM/AAAA)"}, new int[]{20, 42, 14, 18, 14, 26});
 
-            XSSFCellStyle headerStyle = wb.createCellStyle();
-            XSSFFont headerFont = wb.createFont();
-            headerFont.setBold(true);
-            headerFont.setColor(new XSSFColor(new byte[]{(byte) 255, (byte) 255, (byte) 255}, null));
-            headerStyle.setFont(headerFont);
-            headerStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 79, (byte) 70, (byte) 229}, null));
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-            XSSFCellStyle lockedStyle = wb.createCellStyle();
-            lockedStyle.setFillForegroundColor(new XSSFColor(new byte[]{(byte) 241, (byte) 245, (byte) 249}, null));
-            lockedStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-            // En-têtes (ligne 0)
-            Row header = sheet.createRow(0);
-            String[] headers = {"Code Produit", "Nom Produit", "Unité",
-                                 "Stock Disponible", "CMM", "Date Péremption (JJ/MM/AAAA)"};
-            for (int i = 0; i < headers.length; i++) {
-                Cell c = header.createCell(i);
-                c.setCellValue(headers[i]);
-                c.setCellStyle(headerStyle);
-                sheet.setColumnWidth(i, i < 3 ? 5500 : 4500);
-            }
-            // Signature cachée (col SIG_COL)
-            Cell sigCell = header.createCell(SIG_COL);
+            // Signature cachée (col SIG_COL) : le fichier ne s'importe que pour ce programme
+            Cell sigCell = sheet.getRow(0).createCell(SIG_COL);
             sigCell.setCellValue(SIGNATURE_PREFIX + programmeId);
             sheet.setColumnHidden(SIG_COL, true);
 
-            // Lignes produits pré-remplies
+            // Produits suivis par la structure : colonnes A-C verrouillées, D-F à remplir
             int rowIdx = 1;
             for (Produit p : produits) {
                 Row row = sheet.createRow(rowIdx++);
-                Cell c0 = row.createCell(0); c0.setCellValue(p.getCode());   c0.setCellStyle(lockedStyle);
-                Cell c1 = row.createCell(1); c1.setCellValue(p.getNom());    c1.setCellStyle(lockedStyle);
-                Cell c2 = row.createCell(2); c2.setCellValue(p.getUnite());  c2.setCellStyle(lockedStyle);
-                // Colonnes 3-5 vides (à remplir)
+                Cell c0 = row.createCell(0); c0.setCellValue(p.getCode());  c0.setCellStyle(st.verrouille);
+                Cell c1 = row.createCell(1); c1.setCellValue(p.getNom());   c1.setCellStyle(st.verrouille);
+                Cell c2 = row.createCell(2); c2.setCellValue(p.getUnite()); c2.setCellStyle(st.verrouille);
+                row.createCell(3).setCellStyle(st.saisie);
+                row.createCell(4).setCellStyle(st.saisie);
+                row.createCell(5).setCellStyle(st.date);
             }
+            int derniere = Math.max(rowIdx - 1, 1);
 
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            wb.write(out);
-            return out.toByteArray();
+            // Contrôles de saisie : nombres positifs, date future
+            DataValidationHelper dv = sheet.getDataValidationHelper();
+            for (int col : new int[]{3, 4}) {
+                DataValidation v = dv.createValidation(
+                        dv.createDecimalConstraint(DataValidationConstraint.OperatorType.GREATER_OR_EQUAL, "0", null),
+                        new CellRangeAddressList(1, derniere, col, col));
+                v.setErrorStyle(DataValidation.ErrorStyle.STOP);
+                String titre = col == 3 ? "Stock disponible" : "CMM";
+                String aide = col == 3 ? "Quantité en stock à la date de l'état (nombre positif ou 0)."
+                        : "Consommation moyenne mensuelle (nombre positif ou 0 ; vide si inconnue).";
+                v.createErrorBox(titre, aide); v.createPromptBox(titre, aide);
+                v.setShowErrorBox(true); v.setShowPromptBox(true);
+                sheet.addValidationData(v);
+            }
+            DataValidation vDate = dv.createValidation(
+                    dv.createDateConstraint(DataValidationConstraint.OperatorType.GREATER_THAN, "TODAY()", null, "dd/mm/yyyy"),
+                    new CellRangeAddressList(1, derniere, 5, 5));
+            vDate.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            vDate.createErrorBox("Date de péremption", "Date au format JJ/MM/AAAA, postérieure à aujourd'hui. "
+                    + "Obligatoire dès que le stock est supérieur à 0.");
+            vDate.createPromptBox("Date de péremption", "JJ/MM/AAAA, postérieure à aujourd'hui. "
+                    + "Obligatoire si le stock est supérieur à 0 (lot qui périme le premier).");
+            vDate.setShowErrorBox(true); vDate.setShowPromptBox(true);
+            sheet.addValidationData(vDate);
+
+            // Les colonnes produit ne se modifient pas par erreur (protection sans mot de passe)
+            sheet.protectSheet("");
+            sheet.lockFormatColumns(false);
+            sheet.lockSort(false);
+            sheet.lockAutoFilter(false);
+
+            GabaritExcelService.modeEmploi(wb, st, "Saisie des stocks : programme "
+                    + (programme != null ? programme.getNom() : programmeCode), new String[]{
+                    "Remplissez la feuille « " + sheet.getSheetName() + " » : une ligne par produit suivi par votre structure.",
+                    "Les colonnes Code, Nom et Unité sont fournies et protégées : ne les modifiez pas, n'ajoutez pas de produit.",
+                    "Stock Disponible (obligatoire) : quantité en stock, 0 si rupture.",
+                    "CMM : consommation moyenne mensuelle. Laissez vide si inconnue.",
+                    "Date de péremption : celle du lot qui périme le premier, au format JJ/MM/AAAA, "
+                            + "postérieure à aujourd'hui. Obligatoire dès que le stock est supérieur à 0.",
+                    "Une ligne laissée vide est ignorée.",
+                    "Ce fichier ne s'importe que pour ce programme. Pour un autre programme, téléchargez son propre gabarit.",
+                    "En cas d'erreur, rien n'est enregistré : corrigez les lignes signalées puis importez à nouveau.",
+            });
+            return GabaritExcelService.ecrire(wb);
         } catch (IOException e) {
             throw BusinessException.badRequest("Erreur génération modèle: " + e.getMessage());
         }
+    }
+
+    /** « CODEPROGRAMME » pour le nom du fichier téléchargé (caractères sûrs uniquement). */
+    public String codeFichier(Long structureId, Long programmeId) {
+        String code = programmeRepo.findById(programmeId).map(Programme::getCode).orElse("programme");
+        return code.replaceAll("[^A-Za-z0-9_-]", "_");
+    }
+
+    /** Nom de feuille Excel valide (31 caractères, sans caractères interdits). */
+    private static String nomFeuille(String nom) {
+        String n = nom.replaceAll("[\\\\/?*\\[\\]:]", "-");
+        return n.length() > 31 ? n.substring(0, 31) : n;
     }
 
     // ─── Import (deux passes : validation puis écriture) ─────────────────────
@@ -111,10 +152,19 @@ public class ImportExcelService {
                                         Long structureId, String username) {
         List<ParsedRow> allRows = new ArrayList<>();
         try (Workbook wb = new XSSFWorkbook(file.getInputStream())) {
+            // Seules les feuilles signées sont lues : le mode d'emploi et toute feuille
+            // ajoutée par l'utilisateur sont ignorés. Il en faut au moins une.
+            int feuillesSignees = 0;
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                 Sheet sheet = wb.getSheetAt(i);
+                if (!estSignee(sheet)) continue;
                 validateTemplateSignature(sheet, programmeId);
-                allRows.addAll(parseAndValidate(sheet));
+                allRows.addAll(parseAndValidate(sheet, programmeId));
+                feuillesSignees++;
+            }
+            if (feuillesSignees == 0) {
+                throw BusinessException.badRequest(
+                        "Fichier non conforme : utilisez le modèle téléchargé pour ce programme.");
             }
         } catch (IOException e) {
             throw BusinessException.badRequest("Impossible de lire le fichier Excel: " + e.getMessage());
@@ -148,7 +198,13 @@ public class ImportExcelService {
 
     // ─── Passe 1 : lecture + validation (aucune écriture BD) ─────────────────
 
-    private List<ParsedRow> parseAndValidate(Sheet sheet) {
+    private boolean estSignee(Sheet sheet) {
+        Row header = sheet.getRow(0);
+        String sig = header != null ? getCellStringRaw(header.getCell(SIG_COL)) : null;
+        return sig != null && sig.startsWith(SIGNATURE_PREFIX);
+    }
+
+    private List<ParsedRow> parseAndValidate(Sheet sheet, Long programmeId) {
         List<ParsedRow> rows = new ArrayList<>();
         int rowNum = 0;
         for (Row row : sheet) {
@@ -183,10 +239,10 @@ public class ImportExcelService {
             }
 
             // Produit doit exister en base
-            Optional<Produit> produitOpt = produitRepo.findByCode(parsed.produitCode);
+            Optional<Produit> produitOpt = produitRepo.findByCodeIgnoreCaseAndProgrammeId(parsed.produitCode, programmeId);
             if (produitOpt.isEmpty()) {
                 parsed.erreurs.add(new LigneErreurDTO(rowNum, parsed.produitCode,
-                        "Produit introuvable", "Code: " + parsed.produitCode));
+                        "Produit introuvable dans ce programme", "Code: " + parsed.produitCode));
                 rows.add(parsed);
                 continue;
             }

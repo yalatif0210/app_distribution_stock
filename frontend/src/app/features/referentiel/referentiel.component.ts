@@ -34,6 +34,12 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
     MatTooltipModule, MatSlideToggleModule,
     MatPaginatorModule, MatCheckboxModule
   ],
+  styles: [`
+    .lien-gabarit { display:inline-flex; align-items:center; gap:.2rem; border:none; background:none; padding:.1rem .2rem; cursor:pointer; font:inherit; font-size:.75rem; font-weight:600; color:var(--accent-color); }
+    .lien-gabarit mat-icon { font-size:15px; width:15px; height:15px; }
+    .lien-gabarit:hover:not(:disabled) { text-decoration:underline; }
+    .lien-gabarit:disabled { color:var(--text-secondary); cursor:wait; }
+  `],
   template: `
     <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
       <div>
@@ -46,8 +52,9 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
             <mat-icon>upload_file</mat-icon>
             {{ importingGeo ? 'Import en cours…' : 'Import Géo (Excel)' }}
           </button>
-          <span style="font-size:.7rem;color:var(--text-secondary);"><code>région&nbsp;|&nbsp;district&nbsp;|&nbsp;structure&nbsp;|&nbsp;code*&nbsp;|&nbsp;type*</code></span>
-          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel, types&nbsp;:&nbsp;HOPITAL, CENTRE_SANTE, DISPENSAIRE, DEPOT</span>
+          <button type="button" class="lien-gabarit" (click)="telechargerGabarit('geo')" [disabled]="gabaritEnCours === 'geo'">
+            <mat-icon>download</mat-icon> Télécharger le gabarit
+          </button>
         </div>
         <input #geoInput type="file" accept=".xlsx,.xls" hidden (change)="onGeoFile($event)">
 
@@ -56,8 +63,9 @@ import { Region, District, Structure, Programme, Produit, UtilisateurDTO, Import
             <mat-icon>upload_file</mat-icon>
             {{ importingCatalogue ? 'Import en cours…' : 'Import Catalogue (Excel)' }}
           </button>
-          <span style="font-size:.7rem;color:var(--text-secondary);"><code>programme&nbsp;|&nbsp;code_prog*&nbsp;|&nbsp;produit&nbsp;|&nbsp;code_prod*&nbsp;|&nbsp;unité*</code></span>
-          <span style="font-size:.65rem;color:var(--text-secondary);">* optionnel, auto-généré si absent</span>
+          <button type="button" class="lien-gabarit" (click)="telechargerGabarit('catalogue')" [disabled]="gabaritEnCours === 'catalogue'">
+            <mat-icon>download</mat-icon> Télécharger le gabarit
+          </button>
         </div>
         <input #catalogueInput type="file" accept=".xlsx,.xls" hidden (change)="onCatalogueFile($event)">
       </div>
@@ -691,6 +699,30 @@ export class ReferentielComponent implements OnInit, AfterViewInit {
     this.deleteObs(type, id).subscribe({
       next: () => { this.snackBar.open('Supprimé.', 'OK', { duration: 2000 }); this.loadAll(); },
       error: (err: any) => this.snackBar.open(err.error?.message || 'Erreur.', 'Fermer', { duration: 4000 })
+    });
+  }
+
+  /** Gabarit en cours de téléchargement ('geo' ou 'catalogue'), pour désactiver le bouton. */
+  gabaritEnCours: 'geo' | 'catalogue' | null = null;
+
+  /** Télécharge le gabarit Excel d'un import : en-têtes exacts, listes et référentiel existant. */
+  telechargerGabarit(type: 'geo' | 'catalogue'): void {
+    this.gabaritEnCours = type;
+    const requete = type === 'geo' ? this.refService.gabaritGeo() : this.refService.gabaritCatalogue();
+    requete.subscribe({
+      next: blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = type === 'geo' ? 'gabarit_import_geo.xlsx' : 'gabarit_import_catalogue.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.gabaritEnCours = null;
+      },
+      error: () => {
+        this.gabaritEnCours = null;
+        this.snackBar.open('Téléchargement du gabarit impossible.', 'Fermer', { duration: 4000 });
+      }
     });
   }
 

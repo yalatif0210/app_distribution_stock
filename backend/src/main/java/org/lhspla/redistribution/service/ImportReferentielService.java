@@ -47,6 +47,20 @@ public class ImportReferentielService {
 
                 if (nomRegion.isBlank() || nomDistrict.isBlank() || nomStructure.isBlank()) continue;
 
+                // Contrôles avant écriture : messages lisibles plutôt qu'une erreur de base
+                String type = typeStructure.isBlank() ? "" : typeStructure.trim().toUpperCase();
+                if (!type.isEmpty() && !GabaritExcelService.TYPES_STRUCTURE.contains(type)) {
+                    errors++;
+                    messages.add("Ligne " + (i + 1) + " : type « " + typeStructure + " » inconnu (attendu : "
+                            + String.join(", ", GabaritExcelService.TYPES_STRUCTURE) + ").");
+                    continue;
+                }
+                if (codeStructure.length() > 20) {
+                    errors++;
+                    messages.add("Ligne " + (i + 1) + " : code structure trop long (20 caractères au plus).");
+                    continue;
+                }
+
                 try {
                     // Upsert Région
                     Region region = regionRepo.findByNomIgnoreCase(nomRegion).orElseGet(() -> {
@@ -70,7 +84,7 @@ public class ImportReferentielService {
                         Structure s = existing.get();
                         s.setNom(nomStructure);
                         s.setDistrict(district);
-                        if (!typeStructure.isBlank()) s.setType(typeStructure);
+                        if (!type.isEmpty()) s.setType(type);
                         if (!codeStructure.isBlank()) s.setCode(codeStructure);
                         structureRepo.save(s);
                         updated++;
@@ -78,7 +92,7 @@ public class ImportReferentielService {
                         Structure s = new Structure();
                         s.setNom(nomStructure);
                         s.setCode(codeStructure.isBlank() ? "S" + UUID.randomUUID().toString().replace("-","").substring(0,8).toUpperCase() : codeStructure);
-                        s.setType(typeStructure.isBlank() ? "CS" : typeStructure);
+                        s.setType(type.isEmpty() ? "CENTRE_SANTE" : type);
                         s.setDistrict(district);
                         s.setActive(true);
                         structureRepo.save(s);
@@ -114,6 +128,11 @@ public class ImportReferentielService {
                 String uniteProduit = getCellString(row, 4);
 
                 if (nomProgramme.isBlank() || nomProduit.isBlank()) continue;
+                if (codeProduit.length() > 30) {
+                    errors++;
+                    messages.add("Ligne " + (i + 1) + " : code produit trop long (30 caractères au plus).");
+                    continue;
+                }
 
                 try {
                     // Upsert Programme — cherche toujours par nom en priorité

@@ -137,8 +137,9 @@ public class StockController {
                 .map(u -> u.getStructure() != null ? u.getStructure().getId() : null)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
         byte[] content = importExcelService.generateTemplate(structureId, programmeId);
+        String nom = "gabarit_stocks_" + importExcelService.codeFichier(structureId, programmeId) + ".xlsx";
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=template_stocks.xlsx")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nom + "\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(content);
     }

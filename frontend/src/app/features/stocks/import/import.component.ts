@@ -256,7 +256,7 @@ export class ImportComponent implements OnInit, AfterViewInit {
         const a = document.createElement('a');
         a.href = url;
         const prog = this.programmes.find(p => p.id === this.programmeId);
-        a.download = `modele_stocks_${prog?.code ?? this.programmeId}.xlsx`;
+        a.download = `gabarit_stocks_${prog?.code ?? this.programmeId}.xlsx`;
         a.click();
         URL.revokeObjectURL(url);
         this.downloadingTemplate = false;
