@@ -40,6 +40,15 @@ export class ReferentielService {
     return this.http.put<void>(`/api/referentiel/periodes/${id}/fermer`, {});
   }
 
+  /**
+   * Programmes gérés sur au moins un site de la région (ou par le site du gestionnaire).
+   * Pour les listes de choix des écrans de saisie, de suivi et d'analyse.
+   */
+  getProgrammesGeres(regionId?: number | null): Observable<Programme[]> {
+    const options = regionId != null ? { params: { regionId: String(regionId) } } : {};
+    return this.http.get<Programme[]>('/api/referentiel/programmes/geres', options);
+  }
+
   importGeo(file: File): Observable<ImportResult> {
     const fd = new FormData();
     fd.append('file', file);

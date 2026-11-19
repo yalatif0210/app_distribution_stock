@@ -231,7 +231,7 @@ export class ImportComponent implements OnInit, AfterViewInit {
 
   ngOnInit(): void {
     this.periodeService.findByRegion().subscribe(p => this.periodes = p.filter(x => x.statut === 'OUVERTE'));
-    this.refService.getProgrammes().subscribe(p => this.programmes = p);
+    this.refService.getProgrammesGeres().subscribe(p => this.programmes = p);
   }
 
   ngAfterViewInit(): void {

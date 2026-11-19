@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
+import { MatPaginatorModule, MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSortModule, MatSort } from '@angular/material/sort';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -65,6 +65,12 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
           </mat-select>
         </mat-form-field>
 
+        <button mat-stroked-button color="primary" (click)="imprimerPeriode()" [disabled]="!selectedPeriodeId"
+                [matTooltip]="selectedPeriodeId ? 'Imprimer tous les plans validés de la période' : 'Choisissez d\\'abord une période'"
+                style="height:56px;">
+          <mat-icon>print</mat-icon> Imprimer les plans de la période
+        </button>
+
         <mat-form-field appearance="fill" style="flex:1;min-width:200px;">
           <mat-label>Rechercher</mat-label>
           <input matInput [(ngModel)]="recherche" (input)="filtrerPlans()" placeholder="Région, programme…">
@@ -81,7 +87,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
 
     <!-- Plans list -->
     <ng-container *ngIf="!loading">
-      <ng-container *ngFor="let plan of plansFiltres">
+      <ng-container *ngFor="let plan of plansPage">
         <mat-card style="margin-bottom:1rem;cursor:pointer;" (click)="togglePlan(plan)">
           <mat-card-header style="padding:.875rem 1rem;">
             <mat-card-title style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;font-size:.95rem;font-weight:600;">
@@ -91,8 +97,13 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
               <span style="flex:1;"></span>
               <div style="display:flex;align-items:center;gap:.5rem;min-width:200px;">
                 <mat-progress-bar mode="determinate" [value]="plan.progression" style="flex:1;" color="primary"></mat-progress-bar>
-                <span style="color:var(--text-secondary);font-size:.75rem;white-space:nowrap;">{{ plan.nbLignesExecutees }}/{{ plan.nbLignes }}</span>
+                <span style="color:var(--text-secondary);font-size:.75rem;white-space:nowrap;"
+                      matTooltip="Mouvements exécutés au moins en partie / total des mouvements">{{ plan.nbLignesExecutees }}/{{ plan.nbLignes }}</span>
               </div>
+              <button mat-icon-button (click)="imprimerPlan(plan, $event)" matTooltip="Imprimer ce plan"
+                      aria-label="Imprimer ce plan" style="margin:-.5rem 0;">
+                <mat-icon style="font-size:20px;width:20px;height:20px;">print</mat-icon>
+              </button>
               <mat-icon style="color:var(--text-secondary);font-size:20px;width:20px;height:20px;">
                 {{ expandedPlanId === plan.id ? 'expand_less' : 'expand_more' }}
               </mat-icon>
@@ -190,6 +201,9 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
         </mat-card>
       </ng-container>
 
+      <mat-paginator *ngIf="plansFiltres.length > 0" [length]="plansFiltres.length" [pageSize]="pageSize"
+                     [pageIndex]="pageIndex" [pageSizeOptions]="[5, 10, 25, 50]" (page)="changerPage($event)"
+                     showFirstLastButtons aria-label="Pages de la liste des plans"></mat-paginator>
       <div *ngIf="plansFiltres.length === 0" style="text-align:center;padding:3rem;background:var(--bg-card);border:1px solid var(--border-color);border-radius:.5rem;color:var(--text-secondary);">
         <mat-icon style="font-size:2.5rem;width:2.5rem;height:2.5rem;display:block;margin:0 auto .75rem;">assignment</mat-icon>
         {{ recherche ? 'Aucun plan correspond à la recherche.' : 'Aucun plan trouvé.' }}
@@ -243,6 +257,31 @@ export class SuiviComponent implements OnInit {
   selectedStatut = '';
   recherche = '';
   loading = false;
+  pageIndex = 0;
+  pageSize = 10;
+
+  /** Plans de la page affichée. */
+  get plansPage(): PlanReattribution[] {
+    return this.plansFiltres.slice(this.pageIndex * this.pageSize, (this.pageIndex + 1) * this.pageSize);
+  }
+
+  changerPage(e: PageEvent): void {
+    this.pageIndex = e.pageIndex;
+    this.pageSize = e.pageSize;
+    this.expandedPlanId = null;
+  }
+
+  /** Ouvre la version imprimable d'un plan dans un nouvel onglet. */
+  imprimerPlan(plan: PlanReattribution, event: Event): void {
+    event.stopPropagation();
+    window.open(`/plans/impression?planId=${plan.id}`, '_blank');
+  }
+
+  /** Tous les plans validés de la période sélectionnée, un par page. */
+  imprimerPeriode(): void {
+    if (!this.selectedPeriodeId) return;
+    window.open(`/plans/impression?periodeId=${this.selectedPeriodeId}`, '_blank');
+  }
   execModal: { plan: PlanReattribution; ligne: LignePlan } | null = null;
   execQte: number | null = null;
   execNotes = '';
@@ -280,6 +319,7 @@ export class SuiviComponent implements OnInit {
           (p.statut ?? '').toLowerCase().includes(q)
         )
       : [...this.plans];
+    this.pageIndex = 0;
   }
 
   togglePlan(plan: PlanReattribution): void {

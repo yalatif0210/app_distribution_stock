@@ -131,7 +131,12 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
 
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef></th>
-            <td mat-cell *matCellDef="let e" style="text-align:right;">
+            <td mat-cell *matCellDef="let e" style="text-align:right;white-space:nowrap;">
+              <button *ngIf="auth.isPharmacienRegion() && e.statut === 'SUBMITTED'" mat-icon-button color="primary"
+                (click)="rouvrirEtat(e, $event)"
+                matTooltip="Rouvrir cet état : le site pourra le corriger puis le soumettre à nouveau">
+                <mat-icon style="font-size:18px;width:18px;height:18px;">lock_open</mat-icon>
+              </button>
               <button *ngIf="auth.isPharmacienRegion()" mat-icon-button color="warn"
                 (click)="supprimerEtat(e, $event)"
                 matTooltip="Supprimer cet état">
@@ -279,7 +284,7 @@ export class EtatsComponent implements OnInit, AfterViewInit {
       ? this.periodeService.getAllPeriodes()
       : this.periodeService.findByRegion();
     p$.subscribe(p => this.periodes = p);
-    this.refService.getProgrammes().subscribe(p => this.programmes = p.filter((x: Programme) => x.active));
+    this.refService.getProgrammesGeres().subscribe(p => this.programmes = p.filter((x: Programme) => x.active));
 
     if (this.auth.isAdmin()) {
       this.refService.getRegions().subscribe(r => this.regions = r);
@@ -341,6 +346,19 @@ export class EtatsComponent implements OnInit, AfterViewInit {
   closeDetail(): void {
     this.selectedEtat = null;
     this.detailData = null;
+  }
+
+  /** Un état soumis par erreur redevient modifiable par le site. */
+  rouvrirEtat(etat: EtatStockSummary, event: Event): void {
+    event.stopPropagation();
+    if (!confirm(`Rouvrir l'état de ${etat.structureNom} ? Le site pourra le corriger puis le soumettre à nouveau.`)) return;
+    this.stockService.reopenEtat(etat.id).subscribe({
+      next: () => {
+        this.rechercher();
+        this.snackBar.open('État rouvert : le site peut le corriger.', 'OK', { duration: 3000 });
+      },
+      error: (err: any) => this.snackBar.open(err.error?.message || 'Erreur.', 'Fermer', { duration: 3000 })
+    });
   }
 
   supprimerEtat(etat: EtatStockSummary, event: Event): void {

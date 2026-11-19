@@ -758,7 +758,7 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       error: () => { this.iaDisponible = false; this.mode = 'MANUEL'; }
     });
     this.refService.getPeriodes().subscribe(p => this.periodes = p);
-    this.refService.getProgrammes().subscribe(p => this.programmes = p);
+    this.refService.getProgrammesGeres().subscribe(p => this.programmes = p);
     if (this.regionId) {
       this.refService.getRegions().subscribe(regions => {
         const r = regions.find(x => x.id === this.regionId);

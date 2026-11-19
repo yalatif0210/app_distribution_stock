@@ -19,6 +19,9 @@ public class TableauBordDTO {
     private String programmeNom;
     private String regionNom;
     private String planStatut;
+    /** « EXECUTEE » : situation après calculée sur les quantités exécutées (plan validé) ;
+     *  « PREVUE » : sur les quantités prévues (brouillon). */
+    private String baseApres;
 
     // Section A: Evolution MSD par produit x site
     private List<MsdEvolutionDTO> evolutionMsd;
@@ -89,6 +92,11 @@ public class TableauBordDTO {
         private double tauxMalStockeApres;
         private double deltaBienStocke;
         private int nbSitesTotal;
+        /** Sites gérant le produit dans la région (sélection active). */
+        private int nbSitesGerant;
+        /** Sites gérant le produit sans état de stock soumis pour la période. */
+        private int nbSansSaisie;
+        private String produitCode;
     }
 
     @Data
@@ -100,6 +108,11 @@ public class TableauBordDTO {
         private double tauxDispoApres;
         private double deltaDispo;
         private String tendance;
+        /** Disponibilité = sites avec un stock > 0 / sites gérant le produit. */
+        private int nbSitesGerant;
+        private int nbDispoAvant;
+        private int nbDispoApres;
+        private int nbSansSaisie;
     }
 
     @Data
@@ -109,11 +122,20 @@ public class TableauBordDTO {
         private List<MouvementImpactDTO> top5Mouvements;
         private double tauxCouvertureProgrammeAvant;
         private double tauxCouvertureProgrammeApres;
+        /** Couverture : produits sans aucun site en rupture, sur les produits ayant au moins un état soumis. */
+        private int nbProduitsSuivis;
+        private int nbProduitsSansRuptureAvant;
+        private int nbProduitsSansRuptureApres;
         private double indiceRisqueAvant;
         private double indiceRisqueApres;
         private double completudeExecution;
         private int nbSitesAmeliores;
-        private int nbSitesDegrades;
+        /** Couples site/produit ayant cédé du stock (sources d'au moins un mouvement). */
+        private int nbSourcesSollicitees;
+        /** Sources dont le MSD après le plan est sous le seuil de sécurité de la région (exception péremption). */
+        private int nbSitesSousSeuil;
+        /** Seuil de sécurité de la région du plan, en mois. */
+        private double seuilSecurite;
     }
 
     @Data

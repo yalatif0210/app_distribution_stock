@@ -5,9 +5,12 @@ import { AuthService } from './auth.service';
 export const authGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  if (auth.isLoggedIn) return true;
-  router.navigate(['/login']);
-  return false;
+  if (!auth.isLoggedIn) {
+    router.navigate(['/login']);
+    return false;
+  }
+  // Profil relu avant d'ouvrir la page (une fois par chargement de l'application)
+  return auth.verifierProfil();
 };
 
 export const gestionnaireGuard: CanActivateFn = () => {

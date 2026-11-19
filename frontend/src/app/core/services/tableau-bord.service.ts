@@ -11,7 +11,8 @@ export class TableauBordService {
     periodeId: number,
     programmeId: number,
     planId: number,
-    regionId?: number
+    regionId?: number,
+    base?: 'PREVUE' | 'EXECUTEE'
   ): Observable<TableauBordDTO> {
     let params = new HttpParams()
       .set('periodeId', periodeId)
@@ -20,6 +21,7 @@ export class TableauBordService {
     if (regionId != null) {
       params = params.set('regionId', regionId);
     }
+    if (base) params = params.set('base', base);
     return this.http.get<TableauBordDTO>('/api/tableau-bord', { params });
   }
 }

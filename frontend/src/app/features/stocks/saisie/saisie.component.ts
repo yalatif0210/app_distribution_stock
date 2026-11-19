@@ -299,7 +299,7 @@ export class SaisieComponent implements OnInit {
     this.periodeService.findByRegion().subscribe(p => {
       this.periodes = p.filter(x => x.statut === 'OUVERTE');
     });
-    this.referentielService.getProgrammes().subscribe(p => {
+    this.referentielService.getProgrammesGeres().subscribe(p => {
       this.programmes = p.filter(x => x.active);
     });
   }

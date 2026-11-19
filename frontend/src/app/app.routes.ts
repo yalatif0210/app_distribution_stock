@@ -3,6 +3,8 @@ import { authGuard, gestionnaireGuard, pharmacienOuAdminGuard } from './core/aut
 
 export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent) },
+  // Impression des plans : page autonome, sans le cadre de l'application
+  { path: 'plans/impression', loadComponent: () => import('./features/plans/impression/impression.component').then(m => m.ImpressionComponent), canActivate: [authGuard] },
   {
     path: '',
     loadComponent: () => import('./layout/layout.component').then(m => m.LayoutComponent),
@@ -34,6 +36,7 @@ export const routes: Routes = [
       { path: 'completude', loadComponent: () => import('./features/completude/completude.component').then(m => m.CompletudeComponent), canActivate: [authGuard] },
       { path: 'structure-programme', loadComponent: () => import('./features/structure-programme/structure-programme.component').then(m => m.StructureProgrammeComponent), canActivate: [authGuard] },
       { path: 'tableau-bord', loadComponent: () => import('./features/tableau-bord/dashboard.component').then(m => m.DashboardComponent), canActivate: [authGuard] },
+      { path: 'statistiques', loadComponent: () => import('./features/statistiques/statistiques.component').then(m => m.StatistiquesComponent), canActivate: [authGuard] },
       { path: 'admin/swagger', loadComponent: () => import('./features/admin/admin-swagger.component').then(m => m.AdminSwaggerComponent), canActivate: [authGuard] },
       { path: 'parametres', loadComponent: () => import('./features/parametres/parametres.component').then(m => m.ParametresComponent), canActivate: [authGuard, pharmacienOuAdminGuard] },
     ]

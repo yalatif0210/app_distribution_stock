@@ -594,15 +594,18 @@ public class PlanReattributionService {
         if (p.getValidePar() != null) {
             dto.setValideParUsername(p.getValidePar().getUsername());
         }
+        // Compteurs toujours calculés (liste des plans comprise) : lignes exécutées au moins
+        // partiellement sur le total des lignes non annulées
+        List<LignePlan> toutes = p.getLignes() == null ? List.of() : p.getLignes();
+        List<LignePlan> actives = toutes.stream().filter(l -> !"ANNULE".equals(l.getStatut())).toList();
+        long executees = actives.stream()
+                .filter(l -> "EXECUTE".equals(l.getStatut()) || "PARTIEL".equals(l.getStatut())).count();
+        dto.setNbLignes(actives.size());
+        dto.setNbLignesExecutees((int) executees);
+        dto.setProgression(actives.isEmpty() ? 0 : (int) (executees * 100 / actives.size()));
         if (withLignes) {
             // Un plan tout juste créé n'a pas encore de collection chargée : liste vide, jamais null
-            List<LignePlanDTO> lignes = p.getLignes() == null ? List.of()
-                    : p.getLignes().stream().map(this::toLigneDTO).toList();
-            dto.setLignes(lignes);
-            dto.setNbLignes(lignes.size());
-            long executees = lignes.stream().filter(l -> "EXECUTE".equals(l.getStatut())).count();
-            dto.setNbLignesExecutees((int) executees);
-            dto.setProgression(lignes.isEmpty() ? 0 : (int) (executees * 100 / lignes.size()));
+            dto.setLignes(toutes.stream().map(this::toLigneDTO).toList());
         }
         return dto;
     }

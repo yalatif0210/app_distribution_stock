@@ -17,6 +17,13 @@ public interface StructureProgrammeProduitRepository extends JpaRepository<Struc
 
     List<StructureProgrammeProduit> findByStructureIdAndProgrammeId(Long structureId, Long programmeId);
 
+    /** Couples site/produit gérés (sélection active) pour un programme, dans une région. */
+    @Query("SELECT sp FROM StructureProgrammeProduit sp JOIN FETCH sp.produit JOIN FETCH sp.structure s " +
+           "WHERE sp.actif = true AND sp.programme.id = :programmeId AND s.active = true " +
+           "AND s.district.region.id = :regionId")
+    List<StructureProgrammeProduit> findGeresDansRegion(@Param("programmeId") Long programmeId,
+                                                        @Param("regionId") Long regionId);
+
     @Query("SELECT sp.produit FROM StructureProgrammeProduit sp " +
            "WHERE sp.structure.id = :structureId AND sp.programme.id = :programmeId AND sp.actif = true " +
            "ORDER BY sp.produit.nom")

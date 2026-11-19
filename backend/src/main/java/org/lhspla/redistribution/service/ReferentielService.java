@@ -52,6 +52,19 @@ public class ReferentielService {
                 .orElseThrow(() -> BusinessException.notFound("Structure", id));
     }
 
+    /**
+     * Programmes gérés sur au moins un site du périmètre : le site du gestionnaire, la région
+     * demandée, ou toutes les régions visibles (null = toutes, pour l'admin).
+     */
+    public List<ProgrammeDTO> findProgrammesGeres(Long structureId, java.util.Set<Long> regionIds) {
+        List<Programme> programmes;
+        if (structureId != null) programmes = spRepo.findProgrammesGeresParStructure(structureId);
+        else if (regionIds == null) programmes = spRepo.findProgrammesGeresTous();
+        else if (regionIds.isEmpty()) programmes = List.of();
+        else programmes = spRepo.findProgrammesGeresParRegions(regionIds);
+        return programmes.stream().map(this::toProgrammeDTO).toList();
+    }
+
     public List<ProgrammeDTO> findAllProgrammes() {
         return programmeRepo.findAll().stream().map(this::toProgrammeDTO).toList();
     }

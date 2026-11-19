@@ -198,6 +198,7 @@ export class LayoutComponent implements OnInit {
           items: [
             { label: 'Générer un plan', icon: 'bolt',     routerLink: '/plans/generation' },
             { label: 'Suivi des plans', icon: 'list_alt', routerLink: '/plans/suivi' },
+            { label: 'Statistiques',    icon: 'query_stats', routerLink: '/statistiques' },
           ]
         },
         {
@@ -221,6 +222,7 @@ export class LayoutComponent implements OnInit {
           label: 'Plans', icon: 'assignment',
           items: [
             { label: 'Suivi des plans', icon: 'list_alt', routerLink: '/plans/suivi' },
+            { label: 'Statistiques',    icon: 'query_stats', routerLink: '/statistiques' },
           ]
         },
         {
@@ -249,6 +251,7 @@ export class LayoutComponent implements OnInit {
           label: 'Plans', icon: 'assignment',
           items: [
             { label: 'Suivi des plans', icon: 'list_alt', routerLink: '/plans/suivi' },
+            { label: 'Statistiques',    icon: 'query_stats', routerLink: '/statistiques' },
           ]
         }
       ];

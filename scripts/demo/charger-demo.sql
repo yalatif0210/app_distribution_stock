@@ -250,12 +250,38 @@ JOIN programmes p ON p.id = sp.programme_id
 LEFT JOIN utilisateurs g ON g.structure_id = s.id AND g.username LIKE 'demo\_gest\_%'
 WHERE NOT (dp.decalage = 0 AND s.code = 'DEMO-ANK' AND p.code = 'DEMO-SMI');
 
+-- Mouvements des plans passés (servent aussi à rendre l'historique cohérent)
+CREATE TEMP TABLE demo_mouvements (decalage INT, produit TEXT, source TEXT, cible TEXT,
+                                   propose NUMERIC, execute NUMERIC, statut TEXT) ON COMMIT DROP;
+INSERT INTO demo_mouvements VALUES
+    (2, 'DEMO-ACT-AD', 'DEMO-CHR', 'DEMO-AMB', 120, 120, 'EXECUTE'),
+    (2, 'DEMO-TDR',    'DEMO-ANT', 'DEMO-TAN',  60,  60, 'EXECUTE'),
+    (2, 'DEMO-DMPA',   'DEMO-DEP', 'DEMO-ANT',  80,  80, 'EXECUTE'),
+    (2, 'DEMO-COC',    'DEMO-CHR', 'DEMO-AMB',  50,  50, 'EXECUTE'),
+    (2, 'DEMO-OCYT',   'DEMO-AMB', 'DEMO-CHR', 150, 150, 'EXECUTE'),
+    (2, 'DEMO-FER',    'DEMO-CHR', 'DEMO-MAH', 900, 900, 'EXECUTE'),
+    (1, 'DEMO-ACT-AD', 'DEMO-CHR', 'DEMO-ANT', 120, 120, 'EXECUTE'),
+    (1, 'DEMO-ACT-EN', 'DEMO-CHR', 'DEMO-MAH',  60,  40, 'PARTIEL'),
+    (1, 'DEMO-TDR',    'DEMO-CHR', 'DEMO-AMB',  80,   0, 'EN_ATTENTE'),
+    (1, 'DEMO-DMPA',   'DEMO-DEP', 'DEMO-AMB', 100,   0, 'EN_ATTENTE'),
+    (1, 'DEMO-IMPL',   'DEMO-DEP', 'DEMO-CHR',  20,  20, 'EXECUTE'),
+    (1, 'DEMO-OCYT',   'DEMO-ANT', 'DEMO-CHR', 200, 200, 'EXECUTE'),
+    (1, 'DEMO-FER',    'DEMO-FIA', 'DEMO-MAH', 800, 800, 'EXECUTE');
+
 -- ── Saisies ─────────────────────────────────────────────────────────────────
 -- Période en cours : la situation ci-dessus (seulement les produits suivis par le site)
 -- Périodes passées : même consommation, stock variable pour un historique réaliste.
 CREATE TEMP TABLE demo_saisies ON COMMIT DROP AS
 SELECT dp.id AS periode_id, dp.decalage, s.id AS structure_id, pr.id AS produit_id, e.id AS etat_id, e.saisi_par,
        CASE WHEN dp.decalage = 0 THEN m.stock
+            -- Mois passés : les destinataires des plans étaient en rupture ou en tension,
+            -- les sites expéditeurs avaient de quoi céder ; les autres varient
+            WHEN EXISTS (SELECT 1 FROM demo_mouvements mv WHERE mv.decalage = dp.decalage
+                         AND mv.cible = m.site AND mv.produit = m.produit)
+                 THEN CASE WHEN abs(hashtext(s.code || pr.code)) % 2 = 0 THEN 0 ELSE ROUND(m.cmm * 0.4) END
+            WHEN EXISTS (SELECT 1 FROM demo_mouvements mv WHERE mv.decalage = dp.decalage
+                         AND mv.source = m.site AND mv.produit = m.produit)
+                 THEN GREATEST(ROUND(m.cmm * 5.5), m.stock)
             ELSE ROUND(m.cmm * ((abs(hashtext(s.code || pr.code || dp.decalage)) % 55) / 10.0 + 0.4))
                  + CASE WHEN m.cmm = 0 THEN m.stock ELSE 0 END END AS stock,
        m.cmm,
@@ -302,23 +328,6 @@ SELECT dp.id, p.id, (SELECT id FROM regions WHERE nom = 'Région Démo'), v.stat
 FROM demo_plans v
 JOIN demo_periodes dp ON dp.decalage = v.decalage
 JOIN programmes p ON p.code = v.programme;
-
-CREATE TEMP TABLE demo_mouvements (decalage INT, produit TEXT, source TEXT, cible TEXT,
-                                   propose NUMERIC, execute NUMERIC, statut TEXT) ON COMMIT DROP;
-INSERT INTO demo_mouvements VALUES
-    (2, 'DEMO-ACT-AD', 'DEMO-CHR', 'DEMO-AMB', 120, 120, 'EXECUTE'),
-    (2, 'DEMO-TDR',    'DEMO-ANT', 'DEMO-TAN',  60,  60, 'EXECUTE'),
-    (2, 'DEMO-DMPA',   'DEMO-DEP', 'DEMO-ANT',  80,  80, 'EXECUTE'),
-    (2, 'DEMO-COC',    'DEMO-CHR', 'DEMO-AMB',  50,  50, 'EXECUTE'),
-    (2, 'DEMO-OCYT',   'DEMO-AMB', 'DEMO-CHR', 150, 150, 'EXECUTE'),
-    (2, 'DEMO-FER',    'DEMO-CHR', 'DEMO-MAH', 900, 900, 'EXECUTE'),
-    (1, 'DEMO-ACT-AD', 'DEMO-CHR', 'DEMO-ANT', 120, 120, 'EXECUTE'),
-    (1, 'DEMO-ACT-EN', 'DEMO-CHR', 'DEMO-MAH',  60,  40, 'PARTIEL'),
-    (1, 'DEMO-TDR',    'DEMO-CHR', 'DEMO-AMB',  80,   0, 'EN_ATTENTE'),
-    (1, 'DEMO-DMPA',   'DEMO-DEP', 'DEMO-AMB', 100,   0, 'EN_ATTENTE'),
-    (1, 'DEMO-IMPL',   'DEMO-DEP', 'DEMO-CHR',  20,  20, 'EXECUTE'),
-    (1, 'DEMO-OCYT',   'DEMO-ANT', 'DEMO-CHR', 200, 200, 'EXECUTE'),
-    (1, 'DEMO-FER',    'DEMO-FIA', 'DEMO-MAH', 800, 800, 'EXECUTE');
 
 INSERT INTO lignes_plan (plan_id, produit_id, structure_source_id, structure_cible_id, quantite_proposee,
                          quantite_executee, statut, date_execution, notes, expire_date, created_at)

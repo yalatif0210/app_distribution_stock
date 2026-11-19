@@ -13,6 +13,23 @@ import java.util.Optional;
 @Repository
 public interface StructureProgrammeRepository extends JpaRepository<StructureProgramme, Long> {
 
+    /** Programmes suivis par au moins un site actif des régions données. */
+    @Query("SELECT DISTINCT p FROM StructureProgramme sp JOIN sp.programme p " +
+           "WHERE sp.actif = true AND p.active = true AND sp.structure.active = true " +
+           "AND sp.structure.district.region.id IN :regionIds ORDER BY p.nom")
+    List<Programme> findProgrammesGeresParRegions(@Param("regionIds") java.util.Collection<Long> regionIds);
+
+    /** Programmes suivis par au moins un site actif, toutes régions confondues. */
+    @Query("SELECT DISTINCT p FROM StructureProgramme sp JOIN sp.programme p " +
+           "WHERE sp.actif = true AND p.active = true AND sp.structure.active = true ORDER BY p.nom")
+    List<Programme> findProgrammesGeresTous();
+
+    /** Programmes suivis par un site. */
+    @Query("SELECT DISTINCT p FROM StructureProgramme sp JOIN sp.programme p " +
+           "WHERE sp.actif = true AND p.active = true AND sp.structure.id = :structureId ORDER BY p.nom")
+    List<Programme> findProgrammesGeresParStructure(@Param("structureId") Long structureId);
+
+
     // Structures actives pour un programme dans une région
     @Query("SELECT sp FROM StructureProgramme sp WHERE sp.programme.id = :programmeId AND sp.structure.district.region.id = :regionId AND sp.actif = true")
     List<StructureProgramme> findActiveByProgrammeAndRegion(@Param("programmeId") Long programmeId, @Param("regionId") Long regionId);

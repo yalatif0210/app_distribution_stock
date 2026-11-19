@@ -332,7 +332,7 @@ export class CompletudeComponent implements OnInit {
       });
     }
 
-    this.referentielService.getProgrammes().subscribe(programmes => {
+    this.referentielService.getProgrammesGeres().subscribe(programmes => {
       this.programmeOptions = programmes
         .filter(p => p.active)
         .map(p => ({ label: p.nom, value: p.id }));

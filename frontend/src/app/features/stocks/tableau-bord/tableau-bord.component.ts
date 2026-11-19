@@ -105,7 +105,7 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
           <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">MSD &gt; {{ seuilsStatut.seuils.surstock }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">Normaux</div>
+          <div class="stat-label" style="text-transform:uppercase;font-size:.68rem;font-weight:700;letter-spacing:.06em;">Bien stockés</div>
           <div class="stat-value" style="color:#16a34a;margin-top:.5rem;">{{ nbNormal }}</div>
           <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;">{{ seuilsStatut.seuils.surveiller }} ≤ MSD ≤ {{ seuilsStatut.seuils.surstock }}</div>
         </div>
@@ -218,13 +218,13 @@ export class TableauBordComponent implements OnInit, AfterViewInit {
   get nbRupture(): number  { return this.saisies.filter(s => s.statutStock === 'RUPTURE').length; }
   get nbTension(): number  { return this.saisies.filter(s => s.statutStock === 'TENSION').length; }
   get nbSurstock(): number { return this.saisies.filter(s => s.statutStock === 'SURSTOCK').length; }
-  get nbNormal(): number   { return this.saisies.filter(s => s.statutStock === 'NORMAL').length; }
+  get nbNormal(): number   { return this.saisies.filter(s => s.statutStock === 'BIEN_STOCKE').length; }
 
   constructor(private stockService: StockService, private referentielService: ReferentielService) {}
 
   ngOnInit(): void {
     this.referentielService.getPeriodes().subscribe(p => this.periodes = p);
-    this.referentielService.getProgrammes().subscribe(p => this.programmes = p);
+    this.referentielService.getProgrammesGeres().subscribe(p => this.programmes = p);
     this.referentielService.getRegions().subscribe(r => this.regions = r);
   }
 

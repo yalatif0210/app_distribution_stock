@@ -198,6 +198,8 @@ export interface CompletudeDTO {
 export interface TableauBordDTO {
   periodeId: number; programmeId: number; regionId: number; planId: number;
   periodeLibelle: string; programmeNom: string; regionNom: string; planStatut: string;
+  /** EXECUTEE : « après » sur les quantités exécutées ; PREVUE : sur les quantités prévues (brouillon). */
+  baseApres: 'EXECUTEE' | 'PREVUE';
   evolutionMsd: MsdEvolution[];
   evolutionRuptures: RuptureEvolution[];
   proportionsStockage: ProportionStockage[];
@@ -228,19 +230,30 @@ export interface ProportionStockage {
   tauxBienStockeAvant: number; tauxMalStockeAvant: number;
   tauxBienStockeApres: number; tauxMalStockeApres: number;
   deltaBienStocke: number; nbSitesTotal: number;
+  /** Sites gérant le produit dans la région ; ceux sans état de stock soumis ne sont pas comptés dans les statuts. */
+  nbSitesGerant: number; nbSansSaisie: number; produitCode?: string;
 }
 
 export interface DisponibiliteItem {
   produitId: number; produitNom: string;
   tauxDispoAvant: number; tauxDispoApres: number; deltaDispo: number;
   tendance: 'AMELIORATION' | 'DEGRADATION' | 'STABLE';
+  /** Disponibilité = sites avec un stock > 0 / sites gérant le produit. */
+  nbSitesGerant: number; nbDispoAvant: number; nbDispoApres: number; nbSansSaisie: number;
 }
 
 export interface AnalytiqueData {
   scoreImpactGlobal: number;
   top5Mouvements: { lignePlanId: number; produitNom: string; structureSourceNom: string; structureCibleNom: string; quantiteProposee: number; gainMsdCible: number }[];
   tauxCouvertureProgrammeAvant: number; tauxCouvertureProgrammeApres: number;
+  /** Couverture : produits sans aucun site en rupture / produits suivis. */
+  nbProduitsSuivis: number; nbProduitsSansRuptureAvant: number; nbProduitsSansRuptureApres: number;
   indiceRisqueAvant: number; indiceRisqueApres: number;
   completudeExecution: number;
-  nbSitesAmeliores: number; nbSitesDegrades: number;
+  nbSitesAmeliores: number;
+  /** Couples site/produit ayant cédé du stock. */
+  nbSourcesSollicitees: number;
+  /** Sources passées sous le seuil de sécurité de la région (exception péremption). */
+  nbSitesSousSeuil: number;
+  seuilSecurite: number;
 }

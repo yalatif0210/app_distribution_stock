@@ -4,6 +4,39 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.2.0] - 2026-11-19
+
+### Ajouté
+- **Statistiques** des plans validés sur une plage de dates (date de validation), par région,
+  pour le périmètre d'un superviseur ou au niveau national (admin) : plans, mouvements, taux
+  d'exécution, délais, ruptures résorbées, détail par région, programme, mois et produit, sites
+  les plus sollicités. Export **Excel** et **PDF**.
+- Tableau de bord : choix de la base « après » le plan, **théorique** (quantités prévues) ou
+  **exécutée** (quantités livrées) ; camemberts de proportions par produit ; disponibilité en
+  sites avec stock / sites gérant le produit ; progression annuelle sur douze mois avec le
+  programme comparé.
+- Suivi des plans : **impression** d'un plan ou de tous les plans d'une période (A4, visas),
+  pagination de la liste.
+- États de stock : bouton pour **rouvrir** un état soumis par erreur.
+- **Manuels utilisateur** par rôle et guide de calcul des indicateurs (`docs/manuels`), en
+  Markdown et en PDF (`scripts/manuels-pdf.py`).
+
+### Modifié
+- Indicateurs : « sites dégradés » remplacé par « sources sollicitées » et « passés sous le
+  seuil » ; indice de risque ramené à une moyenne de 0 à 3 ; couverture du programme
+  redéfinie en produits sans aucun site en rupture.
+- Évolution MSD limitée aux sites ayant participé au plan ; ruptures limitées aux produits
+  concernés ; « Normal » devient « Bien stocké ».
+- Listes de programmes limitées aux programmes gérés sur au moins un site de la région (ou par
+  le site pour un gestionnaire).
+
+### Corrigé
+- Compteur n/m des plans toujours à 0/0 dans la liste du suivi.
+- Graphiques des onglets du tableau de bord vides (construits avant l'ouverture de l'onglet) ;
+  progression annuelle effacée par « Analyser ».
+- Site sans consommation compté « en rupture » après le plan alors qu'il garde du stock.
+- Session ancienne : le profil (région, structure, rôle) est relu à l'ouverture de l'application.
+
 ## [1.1.0] - 2026-11-18
 
 ### Ajouté

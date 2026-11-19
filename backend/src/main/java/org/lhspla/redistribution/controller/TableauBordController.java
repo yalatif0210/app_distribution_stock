@@ -28,8 +28,11 @@ public class TableauBordController {
             @RequestParam Long periodeId,
             @RequestParam Long programmeId,
             @RequestParam(required = false) Long regionId,
-            @RequestParam Long planId) {
+            @RequestParam Long planId,
+            // PREVUE : après théorique (quantités prévues) ; EXECUTEE : quantités livrées.
+            // Absent : exécutée pour un plan validé, prévue pour un brouillon.
+            @RequestParam(required = false) String base) {
         Long regionDuPlan = perimetreService.courant().regionObligatoire(planService.regionDuPlan(planId));
-        return ResponseEntity.ok(tableauBordService.calculer(periodeId, programmeId, regionDuPlan, planId));
+        return ResponseEntity.ok(tableauBordService.calculer(periodeId, programmeId, regionDuPlan, planId, base));
     }
 }

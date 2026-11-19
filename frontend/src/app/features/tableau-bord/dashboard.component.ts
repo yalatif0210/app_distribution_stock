@@ -16,6 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import Chart from 'chart.js/auto';
+import { forkJoin, of } from 'rxjs';
 import { TableauBordService } from '../../core/services/tableau-bord.service';
 import { PeriodeService } from '../../core/services/periode.service';
 import { ReferentielService } from '../../core/services/referentiel.service';
@@ -87,6 +88,26 @@ import {
 
     <ng-container *ngIf="!loading && data">
 
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.9rem;font-size:.82rem;color:var(--text-secondary);">
+        <span style="font-weight:700;text-transform:uppercase;font-size:.7rem;letter-spacing:.05em;">« Après » le plan</span>
+        <div role="radiogroup" aria-label="Base du calcul après le plan"
+             style="display:inline-flex;border:1px solid var(--border-color);border-radius:.4rem;overflow:hidden;">
+          <button type="button" role="radio" [attr.aria-checked]="data.baseApres === 'PREVUE'" (click)="changerBase('PREVUE')"
+                  [style.background]="data.baseApres === 'PREVUE' ? 'var(--accent-color)' : 'transparent'"
+                  [style.color]="data.baseApres === 'PREVUE' ? '#fff' : 'var(--text-primary)'"
+                  style="border:none;padding:.35rem .8rem;font:inherit;font-size:.8rem;cursor:pointer;"
+                  matTooltip="Si toutes les quantités prévues par le plan étaient livrées">Théorique (prévu)</button>
+          <button type="button" role="radio" [attr.aria-checked]="data.baseApres === 'EXECUTEE'" (click)="changerBase('EXECUTEE')"
+                  [disabled]="data.planStatut === 'BROUILLON'"
+                  [style.background]="data.baseApres === 'EXECUTEE' ? 'var(--accent-color)' : 'transparent'"
+                  [style.color]="data.baseApres === 'EXECUTEE' ? '#fff' : (data.planStatut === 'BROUILLON' ? 'var(--text-secondary)' : 'var(--text-primary)')"
+                  style="border:none;border-left:1px solid var(--border-color);padding:.35rem .8rem;font:inherit;font-size:.8rem;cursor:pointer;"
+                  [matTooltip]="data.planStatut === 'BROUILLON' ? 'Plan en brouillon : rien n\\'est encore exécuté' : 'Quantités réellement livrées'">Exécuté (réel)</button>
+        </div>
+        <span *ngIf="data.baseApres === 'PREVUE'">Situation si toutes les quantités prévues étaient livrées.</span>
+        <span *ngIf="data.baseApres === 'EXECUTEE'">Situation avec les quantités réellement livrées à ce jour.</span>
+      </div>
+
       <!-- KPI stat cards -->
       <div class="grid-4" style="margin-bottom:1.25rem;">
         <!-- Taux disponibilité -->
@@ -139,20 +160,20 @@ import {
           <div style="display:flex; align-items:flex-end; gap:.75rem;">
             <div>
               <div style="font-size:.75rem;color:var(--text-secondary);">Avant</div>
-              <div style="font-size:1.4rem;font-weight:700;color:#ef4444;">{{ data.analytique.indiceRisqueAvant | number:'1.0-0' }}</div>
+              <div style="font-size:1.4rem;font-weight:700;color:#ef4444;">{{ data.analytique.indiceRisqueAvant | number:'1.2-2' }}</div>
             </div>
             <div style="color:var(--text-secondary);padding-bottom:6px;">→</div>
             <div>
               <div style="font-size:.75rem;color:var(--text-secondary);">Après</div>
               <div style="font-size:1.4rem;font-weight:700;" [style.color]="deltaTrend(data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres)">
-                {{ data.analytique.indiceRisqueApres | number:'1.0-0' }}
+                {{ data.analytique.indiceRisqueApres | number:'1.2-2' }}
               </div>
             </div>
           </div>
           <div class="stat-delta" [style.color]="deltaTrend(data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres)" style="margin-top:.5rem;">
             <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">{{ deltaMatIcon(data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres) }}</mat-icon>
-            {{ (data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres) | number:'1.0-0' }} pts
-            <span style="color:var(--text-secondary);font-size:.75rem;margin-left:.25rem;">(↓ = mieux)</span>
+            {{ (data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres) | number:'1.2-2' }}
+            <span style="color:var(--text-secondary);font-size:.75rem;margin-left:.25rem;">sur une échelle de 0 à 3 (↓ = mieux)</span>
           </div>
         </div>
 
@@ -163,14 +184,15 @@ import {
             {{ data.analytique.scoreImpactGlobal | number:'1.0-0' }}
           </div>
           <div style="margin-top:.75rem;display:flex;gap:.75rem;font-size:.8rem;">
-            <span style="color:#22c55e;"><mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">trending_up</mat-icon> {{ data.analytique.nbSitesAmeliores }} améliorés</span>
-            <span style="color:#ef4444;"><mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">trending_down</mat-icon> {{ data.analytique.nbSitesDegrades }} dégradés</span>
+            <span style="color:#22c55e;" matTooltip="Couples site/produit dont le MSD augmente"><mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">trending_up</mat-icon> {{ data.analytique.nbSitesAmeliores }} améliorés</span>
+            <span style="color:#475569;" matTooltip="Couples site/produit ayant cédé du stock"><mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">call_made</mat-icon> {{ data.analytique.nbSourcesSollicitees }} sources</span>
+            <span *ngIf="data.analytique.nbSitesSousSeuil > 0" style="color:#b45309;" matTooltip="Sources passées sous le seuil de sécurité (exception péremption)"><mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">warning</mat-icon> {{ data.analytique.nbSitesSousSeuil }} sous le seuil</span>
           </div>
         </div>
       </div>
 
       <!-- Tabs -->
-      <mat-tab-group animationDuration="200ms">
+      <mat-tab-group animationDuration="200ms" (selectedTabChange)="onOnglet($event.index)">
 
         <!-- Tab A: Evolution MSD -->
         <mat-tab>
@@ -181,6 +203,9 @@ import {
             <div class="section-title">
               <mat-icon>show_chart</mat-icon>
               A. Évolution des Mois de Stock Disponible (MSD)
+            </div>
+            <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
+              Sites ayant participé au plan (source ou destination d'au moins un mouvement), produit par produit.
             </div>
             <div class="chart-container" style="margin-bottom:1.5rem;">
               <canvas id="msdChart"></canvas>
@@ -255,7 +280,14 @@ import {
               <mat-icon style="color:#ef4444;">warning</mat-icon>
               B. Évolution des ruptures de stock
             </div>
-            <div class="chart-container" style="margin-bottom:1.5rem;">
+            <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
+              Nombre de sites en rupture avant et après le plan, pour les produits concernés (au moins une rupture avant ou après).
+            </div>
+            <div *ngIf="data.evolutionRuptures.length === 0" style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:.875rem;">
+              <mat-icon style="display:block;margin:0 auto .5rem;color:#22c55e;">check_circle</mat-icon>
+              Aucun site en rupture, ni avant ni après ce plan.
+            </div>
+            <div class="chart-container" style="margin-bottom:1.5rem;" [style.display]="data.evolutionRuptures.length ? 'block' : 'none'">
               <canvas id="ruptureChart"></canvas>
             </div>
             <div style="padding:.25rem 0 .5rem;">
@@ -271,11 +303,11 @@ import {
                 <td mat-cell *matCellDef="let item" style="font-size:.8rem;">{{ item.produitNom }}</td>
               </ng-container>
               <ng-container matColumnDef="avant">
-                <th mat-header-cell *matHeaderCellDef mat-sort-header style="text-align:center;">Avant</th>
+                <th mat-header-cell *matHeaderCellDef mat-sort-header="nbRupturesAvant" style="text-align:center;">Sites en rupture avant</th>
                 <td mat-cell *matCellDef="let item" style="text-align:center;color:#ef4444;font-weight:600;">{{ item.nbRupturesAvant }}</td>
               </ng-container>
               <ng-container matColumnDef="apres">
-                <th mat-header-cell *matHeaderCellDef mat-sort-header style="text-align:center;">Après</th>
+                <th mat-header-cell *matHeaderCellDef mat-sort-header="nbRupturesApres" style="text-align:center;">Sites en rupture après</th>
                 <td mat-cell *matCellDef="let item" style="text-align:center;font-weight:600;" [style.color]="item.nbRupturesApres < item.nbRupturesAvant ? '#22c55e' : '#ef4444'">{{ item.nbRupturesApres }}</td>
               </ng-container>
               <ng-container matColumnDef="delta">
@@ -297,22 +329,42 @@ import {
         <!-- Tab C: Proportions -->
         <mat-tab>
           <ng-template mat-tab-label>
-            <mat-icon style="margin-right:.4rem;">stacked_bar_chart</mat-icon> Proportions
+            <mat-icon style="margin-right:.4rem;">pie_chart</mat-icon> Proportions
           </ng-template>
           <div style="padding:1rem 0;">
             <div class="section-title">
-              <mat-icon style="color:#f97316;">stacked_bar_chart</mat-icon>
-              C. Proportions de stockage (100%)
+              <mat-icon style="color:#f97316;">pie_chart</mat-icon>
+              C. Proportions de stockage
             </div>
-            <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;font-size:.75rem;">
-              <div style="display:flex;align-items:center;gap:.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#ef4444;"></span> Rupture</div>
-              <div style="display:flex;align-items:center;gap:.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#f97316;"></span> Tension</div>
-              <div style="display:flex;align-items:center;gap:.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#eab308;"></span> À surveiller</div>
-              <div style="display:flex;align-items:center;gap:.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#22c55e;"></span> Normal</div>
-              <div style="display:flex;align-items:center;gap:.3rem;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#a855f7;"></span> Surstock</div>
+            <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
+              Répartition des sites par statut, pour chaque produit géré sur au moins un site de la région.
             </div>
-            <div class="chart-container">
-              <canvas id="proportionChart"></canvas>
+            <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem;">
+              <mat-form-field appearance="outline" style="flex:1;min-width:260px;max-width:520px;" subscriptSizing="dynamic">
+                <mat-label>Produit</mat-label>
+                <mat-select [(ngModel)]="produitProportionId" (selectionChange)="buildProportionCharts()">
+                  <mat-option *ngFor="let p of data.proportionsStockage" [value]="p.produitId">{{ p.produitNom }}</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <div *ngIf="proportionCourante as p" style="font-size:.8rem;color:var(--text-secondary);">
+                {{ p.nbSitesGerant }} site(s) gèrent ce produit · {{ p.nbSitesTotal }} avec un état de stock soumis
+                <span *ngIf="p.nbSansSaisie > 0" style="color:#b45309;"> · {{ p.nbSansSaisie }} sans saisie, non comptés</span>
+              </div>
+            </div>
+            <div *ngIf="proportionCourante && proportionCourante.nbSitesTotal === 0"
+                 style="padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.875rem;">
+              Aucun état de stock soumis pour ce produit sur la période.
+            </div>
+            <div [style.display]="proportionCourante && proportionCourante.nbSitesTotal > 0 ? 'grid' : 'none'"
+                 style="grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:1rem;">
+              <div style="border:1px solid var(--border-color);border-radius:.5rem;padding:1rem;">
+                <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);text-align:center;margin-bottom:.5rem;">Avant le plan</div>
+                <div style="position:relative;height:280px;"><canvas id="propAvantChart"></canvas></div>
+              </div>
+              <div style="border:1px solid var(--border-color);border-radius:.5rem;padding:1rem;">
+                <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);text-align:center;margin-bottom:.5rem;">Après le plan</div>
+                <div style="position:relative;height:280px;"><canvas id="propApresChart"></canvas></div>
+              </div>
             </div>
           </div>
         </mat-tab>
@@ -327,6 +379,9 @@ import {
               <mat-icon style="color:#22c55e;">check_circle</mat-icon>
               D. Disponibilité des produits
             </div>
+            <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
+              Pour chaque produit : nombre de sites avec un stock supérieur à 0, sur le nombre de sites qui gèrent ce produit dans la région.
+            </div>
             <div style="padding:.25rem 0 .5rem;">
               <mat-form-field appearance="outline" style="width:100%;">
                 <mat-label>Filtrer</mat-label>
@@ -339,22 +394,29 @@ import {
                 <th mat-header-cell *matHeaderCellDef mat-sort-header style="min-width:160px;">Produit</th>
                 <td mat-cell *matCellDef="let item" style="font-weight:500;font-size:.875rem;">{{ item.produitNom }}</td>
               </ng-container>
+              <ng-container matColumnDef="gerant">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header="nbSitesGerant" style="text-align:center;">Sites gérant</th>
+                <td mat-cell *matCellDef="let item" style="text-align:center;font-family:monospace;">
+                  {{ item.nbSitesGerant }}
+                  <div *ngIf="item.nbSansSaisie > 0" style="font-size:.7rem;color:#b45309;font-family:inherit;" matTooltip="Sites gérant le produit sans état de stock soumis : comptés comme non disponibles">{{ item.nbSansSaisie }} sans saisie</div>
+                </td>
+              </ng-container>
               <ng-container matColumnDef="dispoAvant">
-                <th mat-header-cell *matHeaderCellDef mat-sort-header>Disponibilité avant</th>
+                <th mat-header-cell *matHeaderCellDef mat-sort-header="tauxDispoAvant">Disponibilité avant</th>
                 <td mat-cell *matCellDef="let item">
                   <div style="display:flex;align-items:center;gap:.5rem;">
-                    <mat-progress-bar mode="determinate" [value]="item.tauxDispoAvant" style="width:120px;" color="accent"></mat-progress-bar>
-                    <span style="font-size:.8rem;font-family:monospace;min-width:40px;">{{ item.tauxDispoAvant | number:'1.0-0' }}%</span>
+                    <mat-progress-bar mode="determinate" [value]="item.tauxDispoAvant" style="width:110px;" color="accent"></mat-progress-bar>
+                    <span style="font-size:.8rem;font-family:monospace;white-space:nowrap;">{{ item.nbDispoAvant }}/{{ item.nbSitesGerant }} · {{ item.tauxDispoAvant | number:'1.0-0' }}%</span>
                   </div>
                 </td>
               </ng-container>
               <ng-container matColumnDef="dispoApres">
-                <th mat-header-cell *matHeaderCellDef mat-sort-header>Disponibilité après plan</th>
+                <th mat-header-cell *matHeaderCellDef mat-sort-header="tauxDispoApres">Disponibilité après plan</th>
                 <td mat-cell *matCellDef="let item">
                   <div style="display:flex;align-items:center;gap:.5rem;">
-                    <mat-progress-bar mode="determinate" [value]="item.tauxDispoApres" style="width:120px;" color="primary"></mat-progress-bar>
-                    <span style="font-size:.8rem;font-family:monospace;min-width:40px;font-weight:600;" [style.color]="deltaTrend(item.deltaDispo)">
-                      {{ item.tauxDispoApres | number:'1.0-0' }}%
+                    <mat-progress-bar mode="determinate" [value]="item.tauxDispoApres" style="width:110px;" color="primary"></mat-progress-bar>
+                    <span style="font-size:.8rem;font-family:monospace;white-space:nowrap;font-weight:600;" [style.color]="deltaTrend(item.deltaDispo)">
+                      {{ item.nbDispoApres }}/{{ item.nbSitesGerant }} · {{ item.tauxDispoApres | number:'1.0-0' }}%
                     </span>
                   </div>
                 </td>
@@ -376,8 +438,8 @@ import {
                   </span>
                 </td>
               </ng-container>
-              <tr mat-header-row *matHeaderRowDef="['produit','dispoAvant','dispoApres','delta','tendance']"></tr>
-              <tr mat-row *matRowDef="let row; columns: ['produit','dispoAvant','dispoApres','delta','tendance'];"></tr>
+              <tr mat-header-row *matHeaderRowDef="['produit','gerant','dispoAvant','dispoApres','delta','tendance']"></tr>
+              <tr mat-row *matRowDef="let row; columns: ['produit','gerant','dispoAvant','dispoApres','delta','tendance'];"></tr>
             </table>
             <mat-paginator #pagDispo [pageSizeOptions]="[10, 25, 50]" showFirstLastButtons></mat-paginator>
           </div>
@@ -481,14 +543,15 @@ import {
               <div>
                 <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">Indicateurs composites</div>
                 <div style="display:flex;flex-direction:column;gap:.75rem;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;padding:.625rem .875rem;background:#f8fafc;border-radius:.375rem;border:1px solid var(--border-color);">
-                    <span style="font-size:.8rem;color:var(--text-secondary);">Couverture programme avant</span>
-                    <span style="font-weight:700;font-family:monospace;">{{ data.analytique.tauxCouvertureProgrammeAvant | number:'1.1-1' }}%</span>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:.625rem .875rem;background:#f8fafc;border-radius:.375rem;border:1px solid var(--border-color);"
+                       matTooltip="Produits du programme sans aucun site en rupture, sur les produits ayant au moins un état de stock soumis">
+                    <span style="font-size:.8rem;color:var(--text-secondary);">Produits sans rupture avant</span>
+                    <span style="font-weight:700;font-family:monospace;">{{ data.analytique.nbProduitsSansRuptureAvant }}/{{ data.analytique.nbProduitsSuivis }} · {{ data.analytique.tauxCouvertureProgrammeAvant | number:'1.0-1' }} %</span>
                   </div>
                   <div style="display:flex;justify-content:space-between;align-items:center;padding:.625rem .875rem;background:#f8fafc;border-radius:.375rem;border:1px solid var(--border-color);">
-                    <span style="font-size:.8rem;color:var(--text-secondary);">Couverture programme après</span>
+                    <span style="font-size:.8rem;color:var(--text-secondary);">Produits sans rupture après</span>
                     <span style="font-weight:700;font-family:monospace;" [style.color]="deltaTrend(data.analytique.tauxCouvertureProgrammeApres - data.analytique.tauxCouvertureProgrammeAvant)">
-                      {{ data.analytique.tauxCouvertureProgrammeApres | number:'1.1-1' }}%
+                      {{ data.analytique.nbProduitsSansRuptureApres }}/{{ data.analytique.nbProduitsSuivis }} · {{ data.analytique.tauxCouvertureProgrammeApres | number:'1.0-1' }} %
                     </span>
                   </div>
                   <div style="display:flex;justify-content:space-between;align-items:center;padding:.625rem .875rem;background:#f8fafc;border-radius:.375rem;border:1px solid var(--border-color);">
@@ -497,14 +560,19 @@ import {
                       {{ data.analytique.completudeExecution | number:'1.1-1' }}%
                     </span>
                   </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.25rem;">
+                  <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:.5rem;margin-top:.25rem;">
                     <div style="padding:.75rem;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:.375rem;text-align:center;">
                       <div style="font-size:1.5rem;font-weight:800;color:#22c55e;">{{ data.analytique.nbSitesAmeliores }}</div>
                       <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.25rem;">Sites améliorés</div>
                     </div>
-                    <div style="padding:.75rem;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:.375rem;text-align:center;">
-                      <div style="font-size:1.5rem;font-weight:800;color:#ef4444;">{{ data.analytique.nbSitesDegrades }}</div>
-                      <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.25rem;">Sites dégradés</div>
+                    <div style="padding:.75rem;background:rgba(100,116,139,.08);border:1px solid rgba(100,116,139,.3);border-radius:.375rem;text-align:center;">
+                      <div style="font-size:1.5rem;font-weight:800;color:#475569;">{{ data.analytique.nbSourcesSollicitees }}</div>
+                      <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.25rem;">Sources sollicitées</div>
+                    </div>
+                    <div style="padding:.75rem;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.3);border-radius:.375rem;text-align:center;"
+                         [matTooltip]="'Sources dont le MSD après le plan est sous le seuil de sécurité de la région (' + data.analytique.seuilSecurite + ' mois) : seule l\\'exception péremption le permet'">
+                      <div style="font-size:1.5rem;font-weight:800;color:#b45309;">{{ data.analytique.nbSitesSousSeuil }}</div>
+                      <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.25rem;">Passés sous le seuil</div>
                     </div>
                   </div>
                 </div>
@@ -578,6 +646,10 @@ import {
         <mat-icon style="color:var(--info);">trending_up</mat-icon>
         H. Progression annuelle des plans validés
       </div>
+      <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
+        Avancement moyen des plans validés, mois par mois : part des lignes exécutées au moins partiellement.
+        Le programme comparé est tracé à côté de l'ensemble des plans.
+      </div>
       <mat-card style="margin-bottom:1.25rem;">
         <mat-card-content style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;padding-top:.5rem;">
           <mat-form-field appearance="fill" style="width:120px;">
@@ -585,9 +657,9 @@ import {
             <input matInput type="number" [(ngModel)]="progressionAnnee" [min]="2020" [max]="2099">
           </mat-form-field>
           <mat-form-field appearance="fill" style="min-width:180px;">
-            <mat-label>Programme</mat-label>
-            <mat-select [(ngModel)]="progressionProgrammeId">
-              <mat-option [value]="null">Tous les programmes</mat-option>
+            <mat-label>Programme comparé</mat-label>
+            <mat-select [(ngModel)]="progressionProgrammeId" (selectionChange)="loadProgression()">
+              <mat-option [value]="null">Aucun (tous les plans seulement)</mat-option>
               <mat-option *ngFor="let p of programmeOptions" [value]="p.value">{{ p.label }}</mat-option>
             </mat-select>
           </mat-form-field>
@@ -603,7 +675,11 @@ import {
 
       <mat-card *ngIf="!loadingProgression">
         <mat-card-content>
-          <div *ngIf="progressionItems.length === 0" style="text-align:center;padding:2rem;color:var(--text-secondary);font-size:.875rem;">
+          <div *ngIf="erreurProgression" style="text-align:center;padding:2rem;color:#b91c1c;font-size:.875rem;">
+            <mat-icon style="font-size:2rem;width:2rem;height:2rem;display:block;margin:0 auto .5rem;">error_outline</mat-icon>
+            {{ erreurProgression }}
+          </div>
+          <div *ngIf="!erreurProgression && progressionItems.length === 0" style="text-align:center;padding:2rem;color:var(--text-secondary);font-size:.875rem;">
             <mat-icon style="font-size:2rem;width:2rem;height:2rem;display:block;margin:0 auto .5rem;">hourglass_empty</mat-icon>
             Aucun plan validé trouvé pour {{ progressionAnnee }}
           </div>
@@ -619,7 +695,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   data: TableauBordDTO | null = null;
   loading = false;
 
-  periodOptions: { label: string; value: number }[] = [];
+  periodOptions: { label: string; value: number; annee?: number }[] = [];
   programmeOptions: { label: string; value: number }[] = [];
   planOptions: { label: string; value: number }[] = [];
 
@@ -631,6 +707,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loadingLines = false;
 
   progressionItems: ExecutionProgressionItem[] = [];
+  /** Progression du programme comparé (vide si aucun). */
+  progressionItemsProgramme: ExecutionProgressionItem[] = [];
+  /** Erreur de chargement de la progression annuelle (distincte de « aucun plan »). */
+  erreurProgression = '';
+  /** Produit affiché dans les camemberts de la section C. */
+  produitProportionId: number | null = null;
+  private propAvantChart: Chart | null = null;
+  private propApresChart: Chart | null = null;
   progressionAnnee: number = new Date().getFullYear();
   progressionProgrammeId: number | null = null;
   loadingProgression = false;
@@ -675,6 +759,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyCharts();
+    if (this.progressionChart) { this.progressionChart.destroy(); this.progressionChart = null; }
   }
 
   loadFilters(): void {
@@ -685,28 +770,47 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (periodes) => {
         this.periodOptions = periodes.map(p => ({
           label: p.libelle ?? p.dateRas,
-          value: p.id
+          value: p.id,
+          annee: p.dateRas ? Number(String(p.dateRas).slice(0, 4)) : (p as any).annee
         }));
-        if (periodes.length > 0) this.selectedPeriodId = periodes[0].id;
+        if (periodes.length > 0) {
+          this.selectedPeriodId = periodes[0].id;
+          this.suivreAnneeDeLaPeriode();
+        }
       }
     });
 
-    this.referentielService.getProgrammes().subscribe({
+    this.referentielService.getProgrammesGeres().subscribe({
       next: (progs) => {
         this.programmeOptions = progs
           .filter(p => p.active)
           .map(p => ({ label: p.nom, value: p.id }));
         if (progs.length > 0) this.selectedProgrammeId = progs[0].id;
+        // La progression annuelle compare par défaut le programme sélectionné à l'ensemble des plans
+        this.progressionProgrammeId = this.selectedProgrammeId;
+        this.loadProgression();
       }
     });
   }
 
+  /** La section H suit les choix faits en haut du tableau de bord. */
   onPeriodChange(): void {
     this.loadPlans();
+    if (this.suivreAnneeDeLaPeriode()) this.loadProgression();
   }
 
   onProgrammeChange(): void {
     this.loadPlans();
+    this.progressionProgrammeId = this.selectedProgrammeId;
+    this.loadProgression();
+  }
+
+  /** Année de la période sélectionnée pour la progression annuelle ; vrai si elle a changé. */
+  private suivreAnneeDeLaPeriode(): boolean {
+    const annee = this.periodOptions.find(p => p.value === this.selectedPeriodId)?.annee;
+    if (!annee || annee === this.progressionAnnee) return false;
+    this.progressionAnnee = annee;
+    return true;
   }
 
   loadPlans(): void {
@@ -725,8 +829,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  load(): void {
+  /** Base du calcul « après » choisie par l'utilisateur (null : défaut selon le statut du plan). */
+  baseApres: 'PREVUE' | 'EXECUTEE' | null = null;
+
+  changerBase(base: 'PREVUE' | 'EXECUTEE'): void {
+    if (this.data?.baseApres === base) return;
+    this.baseApres = base;
+    this.load(false);
+  }
+
+  load(nouveauPlan = true): void {
     if (!this.selectedPeriodId || !this.selectedProgrammeId || !this.selectedPlanId) return;
+    // Nouvelle analyse : base par défaut (exécutée si le plan est validé)
+    if (nouveauPlan) this.baseApres = null;
     this.loading = true;
     this.data = null;
     this.planDetails = null;
@@ -739,7 +854,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.tbService.getTableauBord(
       this.selectedPeriodId,
       this.selectedProgrammeId,
-      this.selectedPlanId
+      this.selectedPlanId,
+      undefined,
+      this.baseApres ?? undefined
     ).subscribe({
       next: (d) => {
         this.data = d;
@@ -747,6 +864,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.dsRuptures.data = d.evolutionRuptures;
         this.dsDisponibilites.data = d.disponibilites;
         this.dsTop5.data = d.analytique.top5Mouvements;
+        // Produit par défaut : le premier qui a des états soumis
+        const premier = d.proportionsStockage.find(p => p.nbSitesTotal > 0) ?? d.proportionsStockage[0];
+        this.produitProportionId = premier?.produitId ?? null;
         this.loading = false;
         setTimeout(() => {
           this.dsMsd.paginator = this.pagMsd ?? null;
@@ -758,6 +878,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.dsTop5.paginator = this.pagTop5 ?? null;
           this.dsTop5.sort = this.sortTop5 ?? null;
           this.buildCharts(d);
+          this.buildProportionCharts();
+          this.buildProgressionChart();
         }, 100);
         this.loadPlanDetails();
       },
@@ -789,15 +911,74 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loadProgression(): void {
     this.loadingProgression = true;
     if (this.progressionChart) { this.progressionChart.destroy(); this.progressionChart = null; }
-    const regionFilter = (this.auth.isAdmin() || this.auth.isSuperviseur()) ? null : this.auth.regionId;
-    this.planService.getExecutionProgression(this.progressionAnnee, regionFilter, this.progressionProgrammeId).subscribe({
-      next: (items) => {
-        this.progressionItems = items;
+    // Pas de région envoyée : le serveur applique lui-même le périmètre de l'utilisateur
+    // (sa région, ses régions, ou toutes pour l'admin), même si la session est ancienne.
+    const regionFilter = null;
+    this.erreurProgression = '';
+    const tous$ = this.planService.getExecutionProgression(this.progressionAnnee, regionFilter, null);
+    const programme$ = this.progressionProgrammeId
+      ? this.planService.getExecutionProgression(this.progressionAnnee, regionFilter, this.progressionProgrammeId)
+      : of([] as ExecutionProgressionItem[]);
+    forkJoin([tous$, programme$]).subscribe({
+      next: ([tous, programme]) => {
+        this.progressionItems = tous;
+        this.progressionItemsProgramme = programme;
         this.loadingProgression = false;
         setTimeout(() => this.buildProgressionChart(), 100);
       },
-      error: () => { this.loadingProgression = false; }
+      error: (err) => {
+        this.loadingProgression = false;
+        this.progressionItems = [];
+        this.erreurProgression = err?.status === 403
+          ? 'Accès refusé à ces données. Déconnectez-vous puis reconnectez-vous pour actualiser votre session.'
+          : 'Impossible de charger la progression annuelle.';
+      }
     });
+  }
+
+  /** Moyenne de progression par mois de l'année (pondérée par le nombre de plans), null si aucun plan. */
+  private parMois(items: ExecutionProgressionItem[]): (number | null)[] {
+    const somme = new Array(12).fill(0), poids = new Array(12).fill(0);
+    for (const it of items) {
+      const [mm, aaaa] = (it.periodeLabel ?? '').split('/');
+      if (Number(aaaa) !== Number(this.progressionAnnee)) continue;
+      const m = Number(mm) - 1;
+      if (m < 0 || m > 11) continue;
+      const n = it.nbPlans || 1;
+      somme[m] += it.progressionMoyenne * n;
+      poids[m] += n;
+    }
+    return somme.map((v, i) => poids[i] ? Math.round(v / poids[i] * 10) / 10 : null);
+  }
+
+  get proportionCourante(): ProportionStockage | undefined {
+    return this.data?.proportionsStockage.find(p => p.produitId === this.produitProportionId);
+  }
+
+  /** Camemberts avant / après du produit choisi : Rupture, Tension, À surveiller, Bien stocké, Surstock. */
+  buildProportionCharts(): void {
+    if (this.propAvantChart) { this.propAvantChart.destroy(); this.propAvantChart = null; }
+    if (this.propApresChart) { this.propApresChart.destroy(); this.propApresChart = null; }
+    const p = this.proportionCourante;
+    if (!p) return;
+    const libelles = ['Rupture', 'Tension', 'À surveiller', 'Bien stocké', 'Surstock'];
+    const couleurs = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#a855f7'];
+    const options: any = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#1e293b', boxWidth: 12 } },
+        tooltip: { callbacks: { label: (ctx: any) => {
+          const total = (ctx.dataset.data as number[]).reduce((a, b) => a + b, 0) || 1;
+          return ` ${ctx.label} : ${ctx.raw} site(s), ${Math.round(ctx.raw / total * 100)} %`;
+        } } }
+      }
+    };
+    const avant = document.getElementById('propAvantChart') as HTMLCanvasElement;
+    const apres = document.getElementById('propApresChart') as HTMLCanvasElement;
+    if (avant) this.propAvantChart = new Chart(avant, { type: 'pie', options, data: { labels: libelles, datasets: [{
+      data: [p.nbRuptureAvant, p.nbTensionAvant, p.nbSurveillerAvant, p.nbNormalAvant, p.nbSurstockAvant], backgroundColor: couleurs }] } });
+    if (apres) this.propApresChart = new Chart(apres, { type: 'pie', options, data: { labels: libelles, datasets: [{
+      data: [p.nbRuptureApres, p.nbTensionApres, p.nbSurveillerApres, p.nbNormalApres, p.nbSurstockApres], backgroundColor: couleurs }] } });
   }
 
   private buildExecutionChart(): void {
@@ -822,22 +1003,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.progressionChart) { this.progressionChart.destroy(); this.progressionChart = null; }
     const ctx = document.getElementById('progressionChart') as HTMLCanvasElement;
     if (!ctx || this.progressionItems.length === 0) return;
+    const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const datasets: any[] = [{
+      label: 'Tous les plans',
+      data: this.parMois(this.progressionItems),
+      borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.08)',
+      fill: true, tension: 0.3, pointBackgroundColor: '#4f46e5', pointRadius: 4, spanGaps: true
+    }];
+    if (this.progressionProgrammeId) {
+      const nom = this.programmeOptions.find(p => p.value === this.progressionProgrammeId)?.label ?? 'Programme';
+      datasets.push({
+        label: nom,
+        data: this.parMois(this.progressionItemsProgramme),
+        borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.08)', borderDash: [6, 4],
+        fill: false, tension: 0.3, pointBackgroundColor: '#f97316', pointRadius: 4, spanGaps: true
+      });
+    }
     this.progressionChart = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels: this.progressionItems.map(i => i.periodeLabel),
-        datasets: [{
-          label: 'Progression moyenne (%)',
-          data: this.progressionItems.map(i => i.progressionMoyenne),
-          borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.1)',
-          fill: true, tension: 0.3, pointBackgroundColor: '#4f46e5', pointRadius: 5
-        }]
-      },
+      data: { labels: mois.map(m => `${m} ${this.progressionAnnee}`), datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#1e293b' } },
-          tooltip: { callbacks: { label: (ctx) => ` ${(ctx.raw as number).toFixed(1)}%` } }
+          legend: { display: true, position: 'bottom', labels: { color: '#1e293b' } },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label} : ${(ctx.raw as number).toFixed(1)} %` } }
         },
         scales: {
           x: { ticks: { color: '#64748b' }, grid: { color: '#e2e8f0' } },
@@ -852,10 +1041,40 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.ruptureChart) { this.ruptureChart.destroy(); this.ruptureChart = null; }
     if (this.proportionChart) { this.proportionChart.destroy(); this.proportionChart = null; }
     if (this.executionChart) { this.executionChart.destroy(); this.executionChart = null; }
-    if (this.progressionChart) { this.progressionChart.destroy(); this.progressionChart = null; }
+    if (this.propAvantChart) { this.propAvantChart.destroy(); this.propAvantChart = null; }
+    if (this.propApresChart) { this.propApresChart.destroy(); this.propApresChart = null; }
+  }
+
+  /**
+   * Les onglets ne créent leur contenu qu'à l'ouverture : graphiques et pagination des
+   * tableaux sont donc (re)construits quand on ouvre l'onglet.
+   */
+  onOnglet(index: number): void {
+    if (!this.data) return;
+    setTimeout(() => {
+      this.raccorderTableaux();
+      if (index === 0 || index === 1) this.buildCharts(this.data!);
+      if (index === 2) this.buildProportionCharts();
+      if (index === 4) this.buildExecutionChart();
+    });
+  }
+
+  private raccorderTableaux(): void {
+    this.dsMsd.paginator = this.pagMsd ?? null;
+    this.dsMsd.sort = this.sortMsd ?? null;
+    this.dsRuptures.paginator = this.pagRuptures ?? null;
+    this.dsRuptures.sort = this.sortRuptures ?? null;
+    this.dsDisponibilites.paginator = this.pagDispo ?? null;
+    this.dsDisponibilites.sort = this.sortDispo ?? null;
+    this.dsLignesPlan.paginator = this.pagLignes ?? null;
+    this.dsLignesPlan.sort = this.sortLignes ?? null;
+    this.dsTop5.paginator = this.pagTop5 ?? null;
+    this.dsTop5.sort = this.sortTop5 ?? null;
   }
 
   private buildCharts(d: TableauBordDTO): void {
+    if (this.msdChart) { this.msdChart.destroy(); this.msdChart = null; }
+    if (this.ruptureChart) { this.ruptureChart.destroy(); this.ruptureChart = null; }
     const gridColor = '#e2e8f0';
     const tickColor = '#64748b';
     const legendColor = '#1e293b';
@@ -897,58 +1116,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         data: {
           labels: d.evolutionRuptures.map(r => r.produitNom),
           datasets: [
-            { label: 'Ruptures Avant', data: d.evolutionRuptures.map(r => r.nbRupturesAvant), backgroundColor: 'rgba(239,68,68,0.75)', borderColor: '#ef4444', borderWidth: 1 },
-            { label: 'Ruptures Après plan', data: d.evolutionRuptures.map(r => r.nbRupturesApres), backgroundColor: 'rgba(34,197,94,0.65)', borderColor: '#22c55e', borderWidth: 1 }
+            { label: 'Sites en rupture avant', data: d.evolutionRuptures.map(r => r.nbRupturesAvant), backgroundColor: 'rgba(239,68,68,0.75)', borderColor: '#ef4444', borderWidth: 1 },
+            { label: 'Sites en rupture après le plan', data: d.evolutionRuptures.map(r => r.nbRupturesApres), backgroundColor: 'rgba(34,197,94,0.65)', borderColor: '#22c55e', borderWidth: 1 }
           ]
         },
-        options: { ...baseOptions, plugins: { ...baseOptions.plugins, title: { display: true, text: 'Nombre de ruptures par produit', color: legendColor } } }
-      });
-    }
-
-    // Proportion stacked Chart
-    const propCtx = document.getElementById('proportionChart') as HTMLCanvasElement;
-    if (propCtx) {
-      const propLabels: string[] = [];
-      const rupAvant: number[] = [], rupApres: number[] = [];
-      const tensAvant: number[] = [], tensApres: number[] = [];
-      const survAvant: number[] = [], survApres: number[] = [];
-      const normAvant: number[] = [], normApres: number[] = [];
-      const surAvant: number[] = [], surApres: number[] = [];
-
-      d.proportionsStockage.forEach(p => {
-        propLabels.push(`${p.produitNom} ↑`, `${p.produitNom} ↓`);
-        rupAvant.push(p.nbRuptureAvant); tensAvant.push(p.nbTensionAvant);
-        survAvant.push(p.nbSurveillerAvant); normAvant.push(p.nbNormalAvant); surAvant.push(p.nbSurstockAvant);
-        rupApres.push(p.nbRuptureApres); tensApres.push(p.nbTensionApres);
-        survApres.push(p.nbSurveillerApres); normApres.push(p.nbNormalApres); surApres.push(p.nbSurstockApres);
-      });
-
-      const interleave = (avant: number[], apres: number[]): number[] => {
-        const result: number[] = [];
-        for (let i = 0; i < avant.length; i++) { result.push(avant[i], apres[i]); }
-        return result;
-      };
-
-      this.proportionChart = new Chart(propCtx, {
-        type: 'bar',
-        data: {
-          labels: propLabels,
-          datasets: [
-            { label: 'Rupture', data: interleave(rupAvant, rupApres), backgroundColor: '#ef4444', stack: 'a' },
-            { label: 'Tension', data: interleave(tensAvant, tensApres), backgroundColor: '#f97316', stack: 'a' },
-            { label: 'À surveiller', data: interleave(survAvant, survApres), backgroundColor: '#eab308', stack: 'a' },
-            { label: 'Normal', data: interleave(normAvant, normApres), backgroundColor: '#22c55e', stack: 'a' },
-            { label: 'Surstock', data: interleave(surAvant, surApres), backgroundColor: '#a855f7', stack: 'a' }
-          ]
-        },
-        options: {
-          ...baseOptions,
-          plugins: { ...baseOptions.plugins, title: { display: true, text: 'Proportions de stockage (sites avant / après)', color: legendColor } },
-          scales: {
-            x: { ...baseOptions.scales.x, stacked: true },
-            y: { ...baseOptions.scales.y, stacked: true }
-          }
-        }
+        options: { ...baseOptions, plugins: { ...baseOptions.plugins, title: { display: true, text: 'Sites en rupture par produit, avant et après le plan', color: legendColor } } }
       });
     }
   }

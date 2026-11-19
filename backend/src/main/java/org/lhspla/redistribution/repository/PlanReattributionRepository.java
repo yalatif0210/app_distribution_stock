@@ -11,6 +11,11 @@ import java.util.List;
 @Repository
 public interface PlanReattributionRepository extends JpaRepository<PlanReattribution, Long> {
 
+    /** Plans validés dans l'intervalle [debut, finExclue[ (date de validation), pour les statistiques. */
+    @Query("SELECT p FROM PlanReattribution p WHERE p.dateValidation >= :debut AND p.dateValidation < :finExclue")
+    List<PlanReattribution> findValidesEntre(@Param("debut") java.time.LocalDateTime debut,
+                                             @Param("finExclue") java.time.LocalDateTime finExclue);
+
     /** Plan verrouillé jusqu'à la fin de la transaction : les écritures sur un même plan passent une à une. */
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM PlanReattribution p WHERE p.id = :id")

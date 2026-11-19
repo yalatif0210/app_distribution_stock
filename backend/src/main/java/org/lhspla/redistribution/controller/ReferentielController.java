@@ -69,6 +69,21 @@ public class ReferentielController {
         return ResponseEntity.ok(referentielService.findAllProgrammes());
     }
 
+    /**
+     * Programmes gérés sur au moins un site de la région (ou par le site du gestionnaire),
+     * pour les listes de choix des écrans de suivi et d'analyse.
+     */
+    @GetMapping("/programmes/geres")
+    public ResponseEntity<List<ProgrammeDTO>> getProgrammesGeres(@RequestParam(required = false) Long regionId) {
+        Perimetre p = perimetreService.courant();
+        if (p.estGestionnaire()) {
+            return ResponseEntity.ok(referentielService.findProgrammesGeres(p.structureId(), null));
+        }
+        if (regionId != null) p.exigerRegion(regionId);
+        Set<Long> regions = regionId != null ? Set.of(regionId) : p.regionsVisibles();
+        return ResponseEntity.ok(referentielService.findProgrammesGeres(null, regions));
+    }
+
     @GetMapping("/produits")
     public ResponseEntity<List<ProduitDTO>> getProduits(@RequestParam(required = false) Long programmeId) {
         return ResponseEntity.ok(referentielService.findProduits(programmeId));

@@ -6,12 +6,15 @@ import org.lhspla.redistribution.dto.response.TableauBordDTO;
 import org.lhspla.redistribution.entity.LignePlan;
 import org.lhspla.redistribution.entity.PeriodeSaisie;
 import org.lhspla.redistribution.entity.PlanReattribution;
+import org.lhspla.redistribution.entity.Produit;
 import org.lhspla.redistribution.entity.SaisieStock;
+import org.lhspla.redistribution.entity.StructureProgrammeProduit;
 import org.lhspla.redistribution.exception.BusinessException;
 import org.lhspla.redistribution.repository.LignePlanRepository;
 import org.lhspla.redistribution.repository.PeriodeSaisieRepository;
 import org.lhspla.redistribution.repository.PlanReattributionRepository;
 import org.lhspla.redistribution.repository.SaisieStockRepository;
+import org.lhspla.redistribution.repository.StructureProgrammeProduitRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,9 +24,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,10 +42,20 @@ public class TableauBordService {
     private final PlanReattributionRepository planRepo;
     private final LignePlanRepository ligneRepo;
     private final PeriodeSaisieRepository periodeRepo;
+    private final StructureProgrammeProduitRepository sppRepo;
 
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
     public TableauBordDTO calculer(Long periodeId, Long programmeId, Long regionId, Long planId) {
+        return calculer(periodeId, programmeId, regionId, planId, null);
+    }
+
+    /**
+     * @param base « PREVUE » : situation après théorique, si toutes les quantités prévues
+     *             étaient livrées ; « EXECUTEE » : quantités réellement livrées. Null : exécutée
+     *             pour un plan validé, prévue pour un brouillon (qui n'a rien d'exécuté).
+     */
+    public TableauBordDTO calculer(Long periodeId, Long programmeId, Long regionId, Long planId, String base) {
 
         // Etape 1: Charger les données de base
         PeriodeSaisie periode = periodeRepo.findById(periodeId)
@@ -67,15 +82,21 @@ public class TableauBordService {
             saisieParCle.put(cle, s);
         }
 
+        // « Après » : quantités réellement exécutées dès que le plan est validé, quantités
+        // prévues tant qu'il est en brouillon. Les lignes annulées ne comptent pas.
+        boolean surExecute = !"BROUILLON".equals(plan.getStatut()) && !"PREVUE".equalsIgnoreCase(base);
+        Set<String> clesSources = new HashSet<>();
         for (LignePlan ligne : lignesPlan) {
             if (ligne.getProduit() == null || ligne.getStructureSource() == null
-                    || ligne.getStructureCible() == null || ligne.getQuantiteProposee() == null) {
+                    || ligne.getStructureCible() == null || "ANNULE".equals(ligne.getStatut())) {
                 continue;
             }
             Long produitId = ligne.getProduit().getId();
             Long sourceId = ligne.getStructureSource().getId();
             Long cibleId = ligne.getStructureCible().getId();
-            BigDecimal qte = ligne.getQuantiteProposee();
+            BigDecimal qte = surExecute ? ligne.getQuantiteExecutee() : ligne.getQuantiteProposee();
+            if (qte == null || qte.signum() <= 0) continue;
+            clesSources.add(sourceId + "_" + produitId);
 
             String cleSource = sourceId + "_" + produitId;
             String cleCible = cibleId + "_" + produitId;
@@ -106,13 +127,25 @@ public class TableauBordService {
                 msdApres = ZERO;
             }
             msdApresMap.put(cle, msdApres);
-            statutApresMap.put(cle, calculerStatut(msdApres));
+            // Sans consommation (CMM nulle), le MSD vaut 0 : le statut dépend du stock restant,
+            // comme dans l'analyse (stock dormant s'il en reste, rupture sinon)
+            statutApresMap.put(cle, cmm.signum() > 0 ? calculerStatut(msdApres)
+                    : stockApres.signum() > 0 ? "STOCK_DORMANT" : "RUPTURE");
         }
 
-        // Etape 3: Section A - Evolution MSD
+        // Etape 3: Section A - Evolution MSD, limitée aux sites ayant participé au plan
+        // (source ou cible d'au moins un mouvement non annulé, pour le produit concerné)
+        Set<String> clesDuPlan = new HashSet<>();
+        for (LignePlan l : lignesPlan) {
+            if ("ANNULE".equals(l.getStatut()) || l.getProduit() == null
+                    || l.getStructureSource() == null || l.getStructureCible() == null) continue;
+            clesDuPlan.add(l.getStructureSource().getId() + "_" + l.getProduit().getId());
+            clesDuPlan.add(l.getStructureCible().getId() + "_" + l.getProduit().getId());
+        }
         List<TableauBordDTO.MsdEvolutionDTO> evolutionMsd = new ArrayList<>();
         for (Map.Entry<String, SaisieStock> entry : saisieParCle.entrySet()) {
             String cle = entry.getKey();
+            if (!clesDuPlan.contains(cle)) continue;
             SaisieStock s = entry.getValue();
             BigDecimal msdAvant = s.getMsd() != null ? s.getMsd() : ZERO;
             BigDecimal msdApres = msdApresMap.getOrDefault(cle, ZERO);
@@ -173,41 +206,72 @@ public class TableauBordService {
                     dto.setTendance(delta < 0 ? "AMELIORATION" : delta > 0 ? "DEGRADATION" : "STABLE");
                     return dto;
                 })
+                // Produits concernés : au moins un site en rupture avant ou après le plan
+                .filter(dto -> dto.getNbRupturesAvant() > 0 || dto.getNbRupturesApres() > 0)
+                .sorted(Comparator.comparing(TableauBordDTO.RuptureEvolutionDTO::getProduitNom))
                 .toList();
 
-        // Etape 5: Section C - Proportions stockage par produit
-        // Grouper saisies par produit
+        // Etape 5 et 6 : produits gérés sur au moins un site de la région (sélection active),
+        // plus ceux qui ont une saisie. Pour chacun : répartition des sites par statut
+        // (section C) et disponibilité = sites avec un stock > 0 / sites gérant le produit (D).
+        Map<Long, Set<Long>> sitesGerantParProduit = new HashMap<>();
+        Map<Long, Produit> produitsUnivers = new HashMap<>();
+        for (StructureProgrammeProduit spp : sppRepo.findGeresDansRegion(programmeId, regionId)) {
+            Long pid = spp.getProduit().getId();
+            sitesGerantParProduit.computeIfAbsent(pid, k -> new HashSet<>()).add(spp.getStructure().getId());
+            produitsUnivers.put(pid, spp.getProduit());
+        }
         Map<Long, List<SaisieStock>> saisiesParProduit = saisiesAvant.stream()
                 .collect(Collectors.groupingBy(s -> s.getProduit().getId()));
+        saisiesAvant.forEach(s -> produitsUnivers.putIfAbsent(s.getProduit().getId(), s.getProduit()));
+        List<Produit> produitsTries = produitsUnivers.values().stream()
+                .sorted(Comparator.comparing(Produit::getNom)).toList();
 
         List<TableauBordDTO.ProportionStockageDTO> proportionsStockage = new ArrayList<>();
-        for (Map.Entry<Long, List<SaisieStock>> entry : saisiesParProduit.entrySet()) {
-            Long pid = entry.getKey();
-            List<SaisieStock> saisiesProduit = entry.getValue();
+        List<TableauBordDTO.DisponibiliteDTO> disponibilites = new ArrayList<>();
+        long totalSitesDispoAvantGlobal = 0;
+        long totalSitesDispoApresGlobal = 0;
+        long totalSitesGlobal = 0;
+
+        for (Produit produit : produitsTries) {
+            Long pid = produit.getId();
+            List<SaisieStock> saisiesProduit = saisiesParProduit.getOrDefault(pid, List.of());
+            Set<Long> sitesAvecSaisie = saisiesProduit.stream()
+                    .map(s -> s.getStructure().getId()).collect(Collectors.toSet());
+            Set<Long> sitesGerant = new HashSet<>(sitesGerantParProduit.getOrDefault(pid, Set.of()));
+            sitesGerant.addAll(sitesAvecSaisie);
+            int nbGerant = sitesGerant.size();
+            int nbSansSaisie = (int) sitesGerant.stream().filter(id -> !sitesAvecSaisie.contains(id)).count();
             int total = saisiesProduit.size();
 
             int nbRuptureAvant = 0, nbTensionAvant = 0, nbSurveillerAvant = 0, nbNormalAvant = 0, nbSurstockAvant = 0;
             int nbRuptureApres = 0, nbTensionApres = 0, nbSurveillerApres = 0, nbNormalApres = 0, nbSurstockApres = 0;
+            int dispoAvant = 0, dispoApres = 0;
 
             for (SaisieStock s : saisiesProduit) {
                 String cle = s.getStructure().getId() + "_" + pid;
                 String statutAvant = s.getStatutStock() != null ? s.getStatutStock() : calculerStatut(s.getMsd() != null ? s.getMsd() : ZERO);
-                String statutApres = statutApresMap.getOrDefault(cle, "RUPTURE");
+                // Stock dormant (sans consommation) : statut inchangé après le plan s'il garde du stock
+                String statutApres = "STOCK_DORMANT".equals(statutAvant)
+                        && stockApresMap.getOrDefault(cle, ZERO).signum() > 0
+                        ? "STOCK_DORMANT" : statutApresMap.getOrDefault(cle, "RUPTURE");
 
                 switch (statutAvant) {
                     case "RUPTURE" -> nbRuptureAvant++;
                     case "TENSION" -> nbTensionAvant++;
                     case "SURVEILLER" -> nbSurveillerAvant++;
                     case "BIEN_STOCKE", "NORMAL" -> nbNormalAvant++;
-                    case "SURSTOCK" -> nbSurstockAvant++;
+                    case "SURSTOCK", "STOCK_DORMANT" -> nbSurstockAvant++;
                 }
                 switch (statutApres) {
                     case "RUPTURE" -> nbRuptureApres++;
                     case "TENSION" -> nbTensionApres++;
                     case "SURVEILLER" -> nbSurveillerApres++;
                     case "BIEN_STOCKE", "NORMAL" -> nbNormalApres++;
-                    case "SURSTOCK" -> nbSurstockApres++;
+                    case "SURSTOCK", "STOCK_DORMANT" -> nbSurstockApres++;
                 }
+                if (s.getStockDisponible() != null && s.getStockDisponible().signum() > 0) dispoAvant++;
+                if (stockApresMap.getOrDefault(cle, ZERO).signum() > 0) dispoApres++;
             }
 
             double tauxBienAvant = total > 0 ? (double) nbNormalAvant / total * 100.0 : 0.0;
@@ -215,7 +279,8 @@ public class TableauBordService {
 
             TableauBordDTO.ProportionStockageDTO dto = new TableauBordDTO.ProportionStockageDTO();
             dto.setProduitId(pid);
-            dto.setProduitNom(saisiesProduit.get(0).getProduit().getNom());
+            dto.setProduitNom(produit.getNom());
+            dto.setProduitCode(produit.getCode());
             dto.setNbRuptureAvant(nbRuptureAvant);
             dto.setNbTensionAvant(nbTensionAvant);
             dto.setNbSurveillerAvant(nbSurveillerAvant);
@@ -232,48 +297,29 @@ public class TableauBordService {
             dto.setTauxMalStockeApres(Math.round((100.0 - tauxBienApres) * 100.0) / 100.0);
             dto.setDeltaBienStocke(Math.round((tauxBienApres - tauxBienAvant) * 100.0) / 100.0);
             dto.setNbSitesTotal(total);
-
+            dto.setNbSitesGerant(nbGerant);
+            dto.setNbSansSaisie(nbSansSaisie);
             proportionsStockage.add(dto);
-        }
 
-        // Etape 6: Section D - Disponibilités par produit
-        List<TableauBordDTO.DisponibiliteDTO> disponibilites = new ArrayList<>();
-        long totalSitesDispoAvantGlobal = 0;
-        long totalSitesDispoApresGlobal = 0;
-        long totalSitesGlobal = 0;
-
-        for (Map.Entry<Long, List<SaisieStock>> entry : saisiesParProduit.entrySet()) {
-            Long pid = entry.getKey();
-            List<SaisieStock> saisiesProduit = entry.getValue();
-            int total = saisiesProduit.size();
-
-            long dispoAvant = saisiesProduit.stream()
-                    .filter(s -> s.getMsd() != null && s.getMsd().compareTo(ZERO) > 0)
-                    .count();
-            long dispoApres = saisiesProduit.stream()
-                    .filter(s -> {
-                        String cle = s.getStructure().getId() + "_" + pid;
-                        BigDecimal msdA = msdApresMap.getOrDefault(cle, ZERO);
-                        return msdA.compareTo(ZERO) > 0;
-                    })
-                    .count();
-
-            double tauxAvant = total > 0 ? (double) dispoAvant / total * 100.0 : 0.0;
-            double tauxApres = total > 0 ? (double) dispoApres / total * 100.0 : 0.0;
-            double delta = tauxApres - tauxAvant;
-
-            TableauBordDTO.DisponibiliteDTO dto = new TableauBordDTO.DisponibiliteDTO();
-            dto.setProduitId(pid);
-            dto.setProduitNom(saisiesProduit.get(0).getProduit().getNom());
-            dto.setTauxDispoAvant(Math.round(tauxAvant * 100.0) / 100.0);
-            dto.setTauxDispoApres(Math.round(tauxApres * 100.0) / 100.0);
-            dto.setDeltaDispo(Math.round(delta * 100.0) / 100.0);
-            dto.setTendance(delta > 0 ? "AMELIORATION" : delta < 0 ? "DEGRADATION" : "STABLE");
-            disponibilites.add(dto);
+            double tauxDispoAvant = nbGerant > 0 ? (double) dispoAvant / nbGerant * 100.0 : 0.0;
+            double tauxDispoApres = nbGerant > 0 ? (double) dispoApres / nbGerant * 100.0 : 0.0;
+            double deltaDispo = tauxDispoApres - tauxDispoAvant;
+            TableauBordDTO.DisponibiliteDTO dispo = new TableauBordDTO.DisponibiliteDTO();
+            dispo.setProduitId(pid);
+            dispo.setProduitNom(produit.getNom());
+            dispo.setNbSitesGerant(nbGerant);
+            dispo.setNbDispoAvant(dispoAvant);
+            dispo.setNbDispoApres(dispoApres);
+            dispo.setNbSansSaisie(nbSansSaisie);
+            dispo.setTauxDispoAvant(Math.round(tauxDispoAvant * 100.0) / 100.0);
+            dispo.setTauxDispoApres(Math.round(tauxDispoApres * 100.0) / 100.0);
+            dispo.setDeltaDispo(Math.round(deltaDispo * 100.0) / 100.0);
+            dispo.setTendance(deltaDispo > 0 ? "AMELIORATION" : deltaDispo < 0 ? "DEGRADATION" : "STABLE");
+            disponibilites.add(dispo);
 
             totalSitesDispoAvantGlobal += dispoAvant;
             totalSitesDispoApresGlobal += dispoApres;
-            totalSitesGlobal += total;
+            totalSitesGlobal += nbGerant;
         }
 
         double tauxDispoGlobalAvant = totalSitesGlobal > 0
@@ -301,30 +347,37 @@ public class TableauBordService {
                 .mapToDouble(m -> m.getDeltaMsd().doubleValue())
                 .sum();
 
-        // nbSitesAmeliores / Degrades
+        // Couples site/produit dont le MSD augmente (les cibles servies)
         long nbSitesAmeliores = evolutionMsd.stream()
                 .filter(m -> "GAIN".equals(m.getTendance())).count();
-        long nbSitesDegrades = evolutionMsd.stream()
-                .filter(m -> "PERTE".equals(m.getTendance())).count();
 
-        // Taux couverture programme = % produits ayant au moins 1 site en NORMAL
-        long nbProduitsTotal = saisiesParProduit.size();
-        long nbProduitsAvecNormalAvant = proportionsStockage.stream()
-                .filter(p -> p.getNbNormalAvant() > 0).count();
-        long nbProduitsAvecNormalApres = proportionsStockage.stream()
-                .filter(p -> p.getNbNormalApres() > 0).count();
-        double tauxCouvertureAvant = nbProduitsTotal > 0
-                ? (double) nbProduitsAvecNormalAvant / nbProduitsTotal * 100.0 : 0.0;
-        double tauxCouvertureApres = nbProduitsTotal > 0
-                ? (double) nbProduitsAvecNormalApres / nbProduitsTotal * 100.0 : 0.0;
+        // Couverture du programme = produits sans aucun site en rupture / produits suivis.
+        // Un produit sans aucun état soumis est écarté : on ne sait pas s'il est en rupture.
+        List<TableauBordDTO.ProportionStockageDTO> produitsSuivis = proportionsStockage.stream()
+                .filter(p -> p.getNbSitesTotal() > 0).toList();
+        long nbProduitsSuivis = produitsSuivis.size();
+        long nbSansRuptureAvant = produitsSuivis.stream().filter(p -> p.getNbRuptureAvant() == 0).count();
+        long nbSansRuptureApres = produitsSuivis.stream().filter(p -> p.getNbRuptureApres() == 0).count();
+        double tauxCouvertureAvant = nbProduitsSuivis > 0 ? (double) nbSansRuptureAvant / nbProduitsSuivis * 100.0 : 0.0;
+        double tauxCouvertureApres = nbProduitsSuivis > 0 ? (double) nbSansRuptureApres / nbProduitsSuivis * 100.0 : 0.0;
 
-        // Indice risque
-        double indiceRisqueAvant = proportionsStockage.stream()
+        // Indice de risque : moyenne par couple site/produit saisi, de 0 (aucun risque) à 3
+        // (tout en rupture) ; rupture = 3, tension = 2, surstock = 1, autres = 0.
+        long nbCouples = proportionsStockage.stream().mapToLong(TableauBordDTO.ProportionStockageDTO::getNbSitesTotal).sum();
+        double indiceRisqueAvant = nbCouples == 0 ? 0 : proportionsStockage.stream()
                 .mapToDouble(p -> p.getNbRuptureAvant() * 3.0 + p.getNbTensionAvant() * 2.0 + p.getNbSurstockAvant() * 1.0)
-                .sum();
-        double indiceRisqueApres = proportionsStockage.stream()
+                .sum() / nbCouples;
+        double indiceRisqueApres = nbCouples == 0 ? 0 : proportionsStockage.stream()
                 .mapToDouble(p -> p.getNbRuptureApres() * 3.0 + p.getNbTensionApres() * 2.0 + p.getNbSurstockApres() * 1.0)
-                .sum();
+                .sum() / nbCouples;
+
+        // Sources : sollicitées, et passées sous le seuil de sécurité (seule l'exception
+        // péremption le permet)
+        BigDecimal seuil = AnalyseStockService.seuilSecurite(plan.getRegion());
+        long nbSitesSousSeuil = clesSources.stream()
+                .filter(cle -> cmmMap.getOrDefault(cle, ZERO).signum() > 0
+                        && msdApresMap.getOrDefault(cle, ZERO).compareTo(seuil) < 0)
+                .count();
 
         // Complétude exécution
         long nbLignesTotal = lignesPlan.size();
@@ -365,11 +418,16 @@ public class TableauBordService {
         analytique.setTop5Mouvements(top5);
         analytique.setTauxCouvertureProgrammeAvant(Math.round(tauxCouvertureAvant * 100.0) / 100.0);
         analytique.setTauxCouvertureProgrammeApres(Math.round(tauxCouvertureApres * 100.0) / 100.0);
-        analytique.setIndiceRisqueAvant(indiceRisqueAvant);
-        analytique.setIndiceRisqueApres(indiceRisqueApres);
+        analytique.setNbProduitsSuivis((int) nbProduitsSuivis);
+        analytique.setNbProduitsSansRuptureAvant((int) nbSansRuptureAvant);
+        analytique.setNbProduitsSansRuptureApres((int) nbSansRuptureApres);
+        analytique.setIndiceRisqueAvant(Math.round(indiceRisqueAvant * 100.0) / 100.0);
+        analytique.setIndiceRisqueApres(Math.round(indiceRisqueApres * 100.0) / 100.0);
         analytique.setCompletudeExecution(Math.round(completudeExecution * 100.0) / 100.0);
         analytique.setNbSitesAmeliores((int) nbSitesAmeliores);
-        analytique.setNbSitesDegrades((int) nbSitesDegrades);
+        analytique.setNbSourcesSollicitees(clesSources.size());
+        analytique.setNbSitesSousSeuil((int) nbSitesSousSeuil);
+        analytique.setSeuilSecurite(seuil.doubleValue());
 
         // Assembler le DTO final
         TableauBordDTO result = new TableauBordDTO();
@@ -381,6 +439,7 @@ public class TableauBordService {
         result.setProgrammeNom(plan.getProgramme() != null ? plan.getProgramme().getNom() : "");
         result.setRegionNom(plan.getRegion() != null ? plan.getRegion().getNom() : "");
         result.setPlanStatut(plan.getStatut());
+        result.setBaseApres(surExecute ? "EXECUTEE" : "PREVUE");
         result.setEvolutionMsd(evolutionMsd);
         result.setEvolutionRuptures(evolutionRuptures);
         result.setProportionsStockage(proportionsStockage);

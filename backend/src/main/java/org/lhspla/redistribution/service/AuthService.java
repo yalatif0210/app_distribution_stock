@@ -28,6 +28,22 @@ public class AuthService {
 
         String token = tokenProvider.generateToken(auth);
         Utilisateur user = utilisateurRepository.findByUsername(request.getUsername()).orElseThrow();
+        return reponse(token, user);
+    }
+
+    /**
+     * Profil à jour de l'utilisateur connecté (sans nouveau jeton) : rôle, structure, région,
+     * régions supervisées. L'écran le relit à chaque ouverture, pour ne pas travailler avec un
+     * rattachement modifié depuis la connexion.
+     */
+    public AuthResponse profil(String username) {
+        Utilisateur user = utilisateurRepository.findByUsername(username)
+                .filter(u -> Boolean.TRUE.equals(u.getActif()))
+                .orElseThrow(() -> org.lhspla.redistribution.exception.BusinessException.forbidden("Compte inconnu ou désactivé"));
+        return reponse(null, user);
+    }
+
+    private AuthResponse reponse(String token, Utilisateur user) {
 
         List<Long> supervisedRegionIds = user.getSupervisedRegions().stream()
                 .map(Region::getId).toList();
