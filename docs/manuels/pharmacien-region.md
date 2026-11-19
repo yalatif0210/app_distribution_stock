@@ -82,6 +82,7 @@ La liste des plans est paginée et filtrable par période, statut ou texte.
 - Le sélecteur **« Après le plan »** compare la situation avant le plan à la situation **théorique**, si tout ce qui est prévu était livré, ou **exécutée**, avec ce qui est réellement livré. L'écart entre les deux montre ce qu'il reste à faire.
 - Les cartes du haut comparent avant et après le plan : disponibilité, taux bien stockés, indice de risque, score d'impact.
 - Les onglets détaillent : évolution du MSD des sites concernés, ruptures, proportions de stockage par produit, disponibilité, exécution et analyses.
+- L'onglet **Synthèses** va plus loin : carte des statuts sites × produits, dispersion des MSD, péremptions évitées, ruptures à venir, ruptures chroniques, fiabilité des expéditeurs et flux entre districts. Chaque analyse donne une **lecture** et des actions **« À faire »** : servez-vous-en pour préparer le plan suivant.
 - La section **H** montre l'avancement des plans mois par mois sur l'année. Elle suit le programme et la période sélectionnés.
 
 Tous les calculs sont expliqués dans le [guide des indicateurs](indicateurs.md).

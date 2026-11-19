@@ -26,11 +26,25 @@ public class ParametreController {
     private final UtilisateurRepository utilisateurRepo;
     private final PerimetreService perimetreService;
     private final SeuilsStatutService seuilsStatutService;
+    private final org.lhspla.redistribution.service.ParametresAnalyseService parametresAnalyseService;
 
     /** Seuils de MSD des statuts de stock. Lisibles par tous : les vues s'en servent pour les couleurs. */
     @GetMapping("/statuts")
     public ResponseEntity<SeuilsStatutService.Seuils> getSeuilsStatut() {
         return ResponseEntity.ok(seuilsStatutService.seuils());
+    }
+
+    /** Barèmes des analyses du tableau de bord. Lisibles par tous, modifiables par l'admin. */
+    @GetMapping("/analyse")
+    public ResponseEntity<org.lhspla.redistribution.service.ParametresAnalyseService.Baremes> getBaremesAnalyse() {
+        return ResponseEntity.ok(parametresAnalyseService.baremes());
+    }
+
+    @PutMapping("/analyse")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<org.lhspla.redistribution.service.ParametresAnalyseService.Baremes> updateBaremesAnalyse(
+            @RequestBody org.lhspla.redistribution.service.ParametresAnalyseService.Baremes b) {
+        return ResponseEntity.ok(parametresAnalyseService.modifier(b));
     }
 
     @PutMapping("/statuts")

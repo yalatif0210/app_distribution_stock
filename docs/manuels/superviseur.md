@@ -27,7 +27,8 @@ Quand vous suivez plusieurs régions, les écrans vous demandent de **préciser 
 - taux bien stockés ;
 - indice de risque ;
 - évolution du MSD des sites concernés ;
-- ruptures, proportions de stockage par produit, exécution.
+- ruptures, proportions de stockage par produit, exécution ;
+- l'onglet **Synthèses** : sites fragiles, dispersion des stocks, péremptions, ruptures à venir et chroniques, fiabilité des expéditeurs, flux entre districts, chacun avec une lecture et des actions « À faire ».
 
 La section **H** montre l'avancement des plans mois par mois.
 

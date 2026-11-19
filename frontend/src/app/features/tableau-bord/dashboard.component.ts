@@ -22,6 +22,9 @@ import { PeriodeService } from '../../core/services/periode.service';
 import { ReferentielService } from '../../core/services/referentiel.service';
 import { PlanService } from '../../core/services/plan.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { AnalysesService, Tendance } from '../../core/services/analyses.service';
+import { AnalysesOngletComponent } from './analyses-onglet.component';
+import { ExplicationComponent } from './explication.component';
 import {
   TableauBordDTO, MsdEvolution, RuptureEvolution,
   ProportionStockage, DisponibiliteItem, PlanReattribution, ExecutionProgressionItem, LignePlan
@@ -34,8 +37,14 @@ import {
     CommonModule, FormsModule,
     MatTableModule, MatPaginatorModule, MatSortModule, MatButtonModule, MatIconModule, MatCardModule,
     MatFormFieldModule, MatSelectModule, MatTabsModule, MatInputModule,
-    MatProgressBarModule, MatProgressSpinnerModule, MatTooltipModule, MatSnackBarModule
+    MatProgressBarModule, MatProgressSpinnerModule, MatTooltipModule, MatSnackBarModule,
+    AnalysesOngletComponent, ExplicationComponent
   ],
+  styles: [`
+    .spark { display:flex; align-items:center; gap:.4rem; margin-top:.6rem; padding-top:.5rem; border-top:1px dashed var(--border-color);
+             font-size:.68rem; color:var(--text-secondary); cursor:help; }
+    .spark svg { width:110px; height:26px; flex-shrink:0; }
+  `],
   template: `
     <!-- Header -->
     <div class="page-header">
@@ -130,6 +139,13 @@ import {
             <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">{{ deltaMatIcon(data.tauxDispoGlobalApres - data.tauxDispoGlobalAvant) }}</mat-icon>
             {{ (data.tauxDispoGlobalApres - data.tauxDispoGlobalAvant) | number:'1.1-1' }}%
           </div>
+          <div *ngIf="tendances.length > 1" class="spark" [matTooltip]="infoTendance('tauxDisponibilite', ' %')">
+            <svg viewBox="0 0 110 26" aria-hidden="true">
+              <polyline [attr.points]="spark('tauxDisponibilite')" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linejoin="round" />
+              <circle [attr.cx]="dernierPoint('tauxDisponibilite')[0]" [attr.cy]="dernierPoint('tauxDisponibilite')[1]" r="2.5" fill="#4f46e5" />
+            </svg>
+            <span>Tendance sur {{ tendances.length }} périodes</span>
+          </div>
         </div>
 
         <!-- Taux bien stockés -->
@@ -151,6 +167,13 @@ import {
           <div class="stat-delta" [style.color]="deltaTrend(data.tauxBienStockeGlobalApres - data.tauxBienStockeGlobalAvant)" style="margin-top:.5rem;">
             <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">{{ deltaMatIcon(data.tauxBienStockeGlobalApres - data.tauxBienStockeGlobalAvant) }}</mat-icon>
             {{ (data.tauxBienStockeGlobalApres - data.tauxBienStockeGlobalAvant) | number:'1.1-1' }}%
+          </div>
+          <div *ngIf="tendances.length > 1" class="spark" [matTooltip]="infoTendance('tauxBienStocke', ' %')">
+            <svg viewBox="0 0 110 26" aria-hidden="true">
+              <polyline [attr.points]="spark('tauxBienStocke')" fill="none" stroke="#16a34a" stroke-width="2" stroke-linejoin="round" />
+              <circle [attr.cx]="dernierPoint('tauxBienStocke')[0]" [attr.cy]="dernierPoint('tauxBienStocke')[1]" r="2.5" fill="#16a34a" />
+            </svg>
+            <span>Tendance sur {{ tendances.length }} périodes</span>
           </div>
         </div>
 
@@ -174,6 +197,13 @@ import {
             <mat-icon style="font-size:14px;width:14px;height:14px;vertical-align:middle;">{{ deltaMatIcon(data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres) }}</mat-icon>
             {{ (data.analytique.indiceRisqueAvant - data.analytique.indiceRisqueApres) | number:'1.2-2' }}
             <span style="color:var(--text-secondary);font-size:.75rem;margin-left:.25rem;">sur une échelle de 0 à 3 (↓ = mieux)</span>
+          </div>
+          <div *ngIf="tendances.length > 1" class="spark" [matTooltip]="infoTendance('indiceRisque', '')">
+            <svg viewBox="0 0 110 26" aria-hidden="true">
+              <polyline [attr.points]="spark('indiceRisque')" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" />
+              <circle [attr.cx]="dernierPoint('indiceRisque')[0]" [attr.cy]="dernierPoint('indiceRisque')[1]" r="2.5" fill="#ef4444" />
+            </svg>
+            <span>Tendance sur {{ tendances.length }} périodes</span>
           </div>
         </div>
 
@@ -207,7 +237,14 @@ import {
             <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
               Sites ayant participé au plan (source ou destination d'au moins un mouvement), produit par produit.
             </div>
-            <div class="chart-container" style="margin-bottom:1.5rem;">
+            <app-explication>
+              Chaque ligne est un couple produit / site. Le point gris donne le MSD avant le plan, le point coloré le MSD après ;
+              le trait qui les relie montre le chemin parcouru : <b style="color:#16a34a;">vert</b> quand le site gagne du stock
+              (destination), <b style="color:#dc2626;">rouge</b> quand il en cède (source). La ligne pointillée marque le seuil de
+              sécurité de la région ({{ data.analytique.seuilSecurite }} mois) : une destination doit idéalement le franchir,
+              une source ne doit pas passer dessous, sauf exception péremption.
+            </app-explication>
+            <div class="chart-container" style="margin-bottom:1.5rem;" [style.height.px]="hauteurHalteres">
               <canvas id="msdChart"></canvas>
             </div>
             <div style="padding:.25rem 0 .5rem;">
@@ -254,13 +291,13 @@ import {
               <ng-container matColumnDef="statutAvant">
                 <th mat-header-cell *matHeaderCellDef mat-sort-header>Statut avant</th>
                 <td mat-cell *matCellDef="let item">
-                  <span [class]="'badge badge-' + item.statutAvant.toLowerCase()">{{ item.statutAvant }}</span>
+                  <span [class]="'badge badge-' + item.statutAvant.toLowerCase().replace('_', '-')">{{ item.statutAvant }}</span>
                 </td>
               </ng-container>
               <ng-container matColumnDef="statutApres">
                 <th mat-header-cell *matHeaderCellDef mat-sort-header>Statut après</th>
                 <td mat-cell *matCellDef="let item">
-                  <span [class]="'badge badge-' + item.statutApres.toLowerCase()">{{ item.statutApres }}</span>
+                  <span [class]="'badge badge-' + item.statutApres.toLowerCase().replace('_', '-')">{{ item.statutApres }}</span>
                 </td>
               </ng-container>
               <tr mat-header-row *matHeaderRowDef="['produit','site','msdAvant','msdApres','delta','tendance','statutAvant','statutApres']"></tr>
@@ -283,6 +320,11 @@ import {
             <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
               Nombre de sites en rupture avant et après le plan, pour les produits concernés (au moins une rupture avant ou après).
             </div>
+            <app-explication>
+              Pour chaque produit, la barre rouge compte les sites en rupture (stock nul, ou MSD nul) avant le plan, la barre verte
+              ceux qui le restent après. Une barre verte plus courte signifie que le plan a sorti des sites de la rupture ;
+              une barre verte aussi haute que la rouge, qu'aucun site de la région n'avait de quoi céder pour ce produit.
+            </app-explication>
             <div *ngIf="data.evolutionRuptures.length === 0" style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:.875rem;">
               <mat-icon style="display:block;margin:0 auto .5rem;color:#22c55e;">check_circle</mat-icon>
               Aucun site en rupture, ni avant ni après ce plan.
@@ -339,6 +381,16 @@ import {
             <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
               Répartition des sites par statut, pour chaque produit géré sur au moins un site de la région.
             </div>
+            <app-explication>
+              Le premier graphique compare tous les produits d'un coup : chaque produit a deux barres (avant, après) qui
+              totalisent 100 % des sites ayant soumis un état de stock, découpées par statut. Plus la part verte (« Bien stocké »)
+              s'allonge entre la barre « avant » et la barre « après », plus le plan a été utile pour ce produit.
+              Les camemberts en dessous détaillent un produit choisi dans la liste.
+            </app-explication>
+            <div *ngIf="proportionsSuivies.length" style="border:1px solid var(--border-color);border-radius:.5rem;padding:1rem;margin-bottom:1rem;">
+              <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:.5rem;">Tous les produits : répartition des sites par statut (100 %)</div>
+              <div style="position:relative;" [style.height.px]="hauteurBarresProportions"><canvas id="propBarresChart"></canvas></div>
+            </div>
             <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:.75rem;">
               <mat-form-field appearance="outline" style="flex:1;min-width:260px;max-width:520px;" subscriptSizing="dynamic">
                 <mat-label>Produit</mat-label>
@@ -382,6 +434,12 @@ import {
             <div style="font-size:.8rem;color:var(--text-secondary);margin:-.25rem 0 .75rem;">
               Pour chaque produit : nombre de sites avec un stock supérieur à 0, sur le nombre de sites qui gèrent ce produit dans la région.
             </div>
+            <app-explication titre="Ce que montre ce tableau">
+              La disponibilité répond à la question « le patient trouve-t-il le produit ? », quel que soit le niveau de stock :
+              un site est disponible dès qu'il a au moins une unité. Les sites qui gèrent le produit sans avoir soumis leur état
+              de stock comptent comme non disponibles, pour ne pas embellir le résultat. Le delta montre combien de points de
+              disponibilité le plan fait gagner.
+            </app-explication>
             <div style="padding:.25rem 0 .5rem;">
               <mat-form-field appearance="outline" style="width:100%;">
                 <mat-label>Filtrer</mat-label>
@@ -455,6 +513,11 @@ import {
               <mat-icon style="color:var(--accent-color);">task_alt</mat-icon>
               F. Niveau d'exécution du plan sélectionné
             </div>
+            <app-explication>
+              L'anneau donne la part des lignes du plan déjà exécutées (totalement ou partiellement). Le tableau détaille chaque
+              mouvement : quantité prévue, quantité réellement livrée et statut. Tant que l'exécution est faible, la vue
+              « Exécuté (réel) » montre peu d'effet : comparez-la à la vue « Théorique » pour mesurer ce qui reste à livrer.
+            </app-explication>
             <div style="display:grid;grid-template-columns:240px 1fr;gap:1.5rem;align-items:start;">
               <!-- Camembert -->
               <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:.5rem;padding:1rem;text-align:center;">
@@ -538,6 +601,13 @@ import {
               <mat-icon style="color:#a855f7;">bolt</mat-icon>
               E. Analyse avancée
             </div>
+            <app-explication titre="Ce que montrent ces indicateurs">
+              « Produits sans rupture » compte les produits du programme pour lesquels aucun site n'est en rupture : c'est la
+              couverture du programme. La complétude d'exécution reprend l'anneau de l'onglet Exécution. Les trois pavés comptent
+              les couples site/produit améliorés, les sources sollicitées et celles passées sous le seuil de sécurité (seule
+              l'exception péremption l'autorise). Le Top 5 classe les mouvements par gain de MSD apporté à la destination.
+              Pour aller plus loin, ouvrez l'onglet « Synthèses ».
+            </app-explication>
             <div style="display:grid;grid-template-columns:1fr 2fr;gap:1.5rem;flex-wrap:wrap;">
               <!-- Métriques -->
               <div>
@@ -627,6 +697,19 @@ import {
           </div>
         </mat-tab>
 
+        <!-- Tab G: Synthèses -->
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon style="margin-right:.4rem;">insights</mat-icon> Synthèses
+          </ng-template>
+          <ng-template matTabContent>
+            <div style="padding:1rem 0;">
+              <app-analyses-onglet [periodeId]="charge.periodeId" [programmeId]="charge.programmeId"
+                                   [planId]="charge.planId" [base]="data.baseApres"></app-analyses-onglet>
+            </div>
+          </ng-template>
+        </mat-tab>
+
       </mat-tab-group>
 
     </ng-container>
@@ -650,6 +733,12 @@ import {
         Avancement moyen des plans validés, mois par mois : part des lignes exécutées au moins partiellement.
         Le programme comparé est tracé à côté de l'ensemble des plans.
       </div>
+      <app-explication>
+        Chaque point est la moyenne, pour les plans validés du mois, de la part de leurs lignes exécutées au moins
+        partiellement. Une courbe qui monte vers 100 % traduit des plans exécutés rapidement ; une courbe basse ou en baisse
+        signale des plans validés mais peu suivis d'effet. L'écart entre la courbe du programme (pointillés) et celle de
+        l'ensemble des plans montre si ce programme s'exécute mieux ou moins bien que les autres.
+      </app-explication>
       <mat-card style="margin-bottom:1.25rem;">
         <mat-card-content style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;padding-top:.5rem;">
           <mat-form-field appearance="fill" style="width:120px;">
@@ -743,6 +832,62 @@ export class DashboardComponent implements OnInit, OnDestroy {
   @ViewChild('sortTop5') sortTop5?: MatSort;
 
   private snackBar = inject(MatSnackBar);
+  private analysesService = inject(AnalysesService);
+
+  /** Filtres du tableau de bord affiché (ceux du dernier « Analyser »). */
+  charge = { periodeId: 0, programmeId: 0, planId: 0 };
+  /** Indicateurs des dernières périodes, pour les courbes des cartes. */
+  tendances: Tendance[] = [];
+  private propBarresChart: Chart | null = null;
+
+  get hauteurHalteres(): number {
+    return Math.max(300, (this.data?.evolutionMsd.length ?? 0) * 24 + 90);
+  }
+
+  /** Produits ayant au moins un état de stock soumis (barres 100 %). */
+  get proportionsSuivies(): ProportionStockage[] {
+    return (this.data?.proportionsStockage ?? []).filter(p => p.nbSitesTotal > 0);
+  }
+
+  get hauteurBarresProportions(): number {
+    return Math.max(220, this.proportionsSuivies.length * 52 + 70);
+  }
+
+  /** Points d'une courbe de tendance (110 × 26). */
+  spark(cle: 'tauxDisponibilite' | 'tauxBienStocke' | 'indiceRisque'): string {
+    return this.pointsSpark(cle).map(p => p.join(',')).join(' ');
+  }
+
+  dernierPoint(cle: 'tauxDisponibilite' | 'tauxBienStocke' | 'indiceRisque'): number[] {
+    const pts = this.pointsSpark(cle);
+    return pts[pts.length - 1] ?? [0, 0];
+  }
+
+  private pointsSpark(cle: 'tauxDisponibilite' | 'tauxBienStocke' | 'indiceRisque'): number[][] {
+    const v = this.tendances.map(t => t[cle]);
+    if (v.length < 2) return [];
+    // Échelle fixe pour les taux (0–100) et l'indice (0–3) : une courbe plate reste plate
+    const [min, max] = cle === 'indiceRisque' ? [0, 3] : [Math.min(...v, 50), 100];
+    return v.map((y, i) => [
+      Math.round((4 + i * 102 / (v.length - 1)) * 10) / 10,
+      Math.round((23 - (y - min) / ((max - min) || 1) * 20) * 10) / 10
+    ]);
+  }
+
+  infoTendance(cle: 'tauxDisponibilite' | 'tauxBienStocke' | 'indiceRisque', unite: string): string {
+    const dec = cle === 'indiceRisque' ? 2 : 1;
+    return 'Avant plan, par période : ' + this.tendances
+      .map(t => `${t.periode} ${t[cle].toLocaleString('fr-FR', { maximumFractionDigits: dec })}${unite}`).join(' · ');
+  }
+
+  private chargerTendances(): void {
+    this.tendances = [];
+    const { periodeId, programmeId, planId } = this.charge;
+    this.analysesService.tendances(periodeId, programmeId, planId).subscribe({
+      next: (t) => this.tendances = t,
+      error: () => this.tendances = []
+    });
+  }
 
   constructor(
     private tbService: TableauBordService,
@@ -845,6 +990,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.data = null;
     this.planDetails = null;
+    this.charge = { periodeId: this.selectedPeriodId, programmeId: this.selectedProgrammeId, planId: this.selectedPlanId };
+    if (nouveauPlan) this.chargerTendances();
     this.dsMsd.data = [];
     this.dsRuptures.data = [];
     this.dsDisponibilites.data = [];
@@ -959,6 +1106,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   buildProportionCharts(): void {
     if (this.propAvantChart) { this.propAvantChart.destroy(); this.propAvantChart = null; }
     if (this.propApresChart) { this.propApresChart.destroy(); this.propApresChart = null; }
+    this.buildBarresProportions();
     const p = this.proportionCourante;
     if (!p) return;
     const libelles = ['Rupture', 'Tension', 'À surveiller', 'Bien stocké', 'Surstock'];
@@ -979,6 +1127,58 @@ export class DashboardComponent implements OnInit, OnDestroy {
       data: [p.nbRuptureAvant, p.nbTensionAvant, p.nbSurveillerAvant, p.nbNormalAvant, p.nbSurstockAvant], backgroundColor: couleurs }] } });
     if (apres) this.propApresChart = new Chart(apres, { type: 'pie', options, data: { labels: libelles, datasets: [{
       data: [p.nbRuptureApres, p.nbTensionApres, p.nbSurveillerApres, p.nbNormalApres, p.nbSurstockApres], backgroundColor: couleurs }] } });
+  }
+
+  /** Barres empilées à 100 % : pour chaque produit, une barre avant et une barre après le plan. */
+  private buildBarresProportions(): void {
+    if (this.propBarresChart) { this.propBarresChart.destroy(); this.propBarresChart = null; }
+    const canvas = document.getElementById('propBarresChart') as HTMLCanvasElement;
+    const produits = this.proportionsSuivies;
+    if (!canvas || !produits.length) return;
+    const statuts: { libelle: string; couleur: string; avant: (p: ProportionStockage) => number; apres: (p: ProportionStockage) => number }[] = [
+      { libelle: 'Rupture', couleur: '#ef4444', avant: p => p.nbRuptureAvant, apres: p => p.nbRuptureApres },
+      { libelle: 'Tension', couleur: '#f97316', avant: p => p.nbTensionAvant, apres: p => p.nbTensionApres },
+      { libelle: 'À surveiller', couleur: '#eab308', avant: p => p.nbSurveillerAvant, apres: p => p.nbSurveillerApres },
+      { libelle: 'Bien stocké', couleur: '#22c55e', avant: p => p.nbNormalAvant, apres: p => p.nbNormalApres },
+      { libelle: 'Surstock', couleur: '#a855f7', avant: p => p.nbSurstockAvant, apres: p => p.nbSurstockApres }
+    ];
+    // Deux lignes par produit : « avant » puis « après »
+    const lignes = produits.flatMap(p => [{ p, moment: 'avant' as const }, { p, moment: 'apres' as const }]);
+    const total = (p: ProportionStockage) => p.nbSitesTotal || 1;
+    const nbSites = (s: typeof statuts[number], l: typeof lignes[number]) => l.moment === 'avant' ? s.avant(l.p) : s.apres(l.p);
+    this.propBarresChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: lignes.map(l => l.moment === 'avant' ? [l.p.produitNom, 'avant'] : 'après') as any,
+        datasets: statuts.map(s => ({
+          label: s.libelle,
+          data: lignes.map(l => Math.round(nbSites(s, l) / total(l.p) * 1000) / 10),
+          backgroundColor: lignes.map(l => l.moment === 'avant' ? s.couleur + '99' : s.couleur),
+          borderColor: '#fff', borderWidth: 1, barPercentage: 0.9, categoryPercentage: 0.85
+        }))
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#1e293b', boxWidth: 12,
+            generateLabels: () => statuts.map((s, i) => ({ text: s.libelle, fillStyle: s.couleur, strokeStyle: s.couleur, lineWidth: 0, datasetIndex: i, fontColor: '#1e293b' })) } },
+          tooltip: { callbacks: {
+            title: (it: any[]) => {
+              const l = lignes[it[0].dataIndex];
+              return `${l.p.produitNom} — ${l.moment === 'avant' ? 'avant' : 'après'} le plan`;
+            },
+            label: (c: any) => {
+              const l = lignes[c.dataIndex];
+              return ` ${c.dataset.label} : ${nbSites(statuts[c.datasetIndex], l)} site(s), ${c.raw.toLocaleString('fr-FR')} %`;
+            }
+          } }
+        },
+        scales: {
+          x: { stacked: true, min: 0, max: 100, ticks: { color: '#64748b', callback: (v: any) => v + ' %' }, grid: { color: '#e2e8f0' } },
+          y: { stacked: true, ticks: { color: '#1e293b', font: { size: 11 }, autoSkip: false }, grid: { display: false } }
+        }
+      } as any
+    });
   }
 
   private buildExecutionChart(): void {
@@ -1041,6 +1241,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.ruptureChart) { this.ruptureChart.destroy(); this.ruptureChart = null; }
     if (this.proportionChart) { this.proportionChart.destroy(); this.proportionChart = null; }
     if (this.executionChart) { this.executionChart.destroy(); this.executionChart = null; }
+    if (this.propBarresChart) { this.propBarresChart.destroy(); this.propBarresChart = null; }
     if (this.propAvantChart) { this.propAvantChart.destroy(); this.propAvantChart = null; }
     if (this.propApresChart) { this.propApresChart.destroy(); this.propApresChart = null; }
   }
@@ -1092,19 +1293,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }
     };
 
-    // MSD Chart
+    // MSD : graphique en haltères (point avant → point après, relié par un trait)
     const msdCtx = document.getElementById('msdChart') as HTMLCanvasElement;
     if (msdCtx) {
+      const lignes = [...d.evolutionMsd].sort((x, y) =>
+        (x.produitNom ?? '').localeCompare(y.produitNom ?? '') || (y.deltaMsd - x.deltaMsd));
+      const couleurDelta = (e: MsdEvolution) => e.deltaMsd > 0 ? '#16a34a' : (e.deltaMsd < 0 ? '#dc2626' : '#94a3b8');
+      const seuil = d.analytique.seuilSecurite;
       this.msdChart = new Chart(msdCtx, {
         type: 'bar',
         data: {
-          labels: d.evolutionMsd.map(e => `${e.produitCode} / ${e.structureNom}`),
+          labels: lignes.map(e => `${e.produitCode} / ${e.structureNom}`),
           datasets: [
-            { label: 'MSD Avant', data: d.evolutionMsd.map(e => e.msdAvant), backgroundColor: 'rgba(145,153,169,0.7)', borderColor: '#94a3b8', borderWidth: 1 },
-            { label: 'MSD Après plan', data: d.evolutionMsd.map(e => e.msdApres), backgroundColor: 'rgba(129,140,248,0.7)', borderColor: '#818cf8', borderWidth: 1 }
-          ]
+            { type: 'bar', label: 'Variation', data: lignes.map(e => [Math.min(e.msdAvant, e.msdApres), Math.max(e.msdAvant, e.msdApres)]) as any,
+              backgroundColor: lignes.map(e => couleurDelta(e) + '99'), barThickness: 4, order: 3 },
+            { type: 'line', label: 'MSD avant', data: lignes.map(e => e.msdAvant), showLine: false,
+              pointRadius: 5, pointBackgroundColor: '#94a3b8', pointBorderColor: '#64748b', backgroundColor: '#94a3b8', borderColor: '#64748b', order: 2 },
+            { type: 'line', label: 'MSD après le plan', data: lignes.map(e => e.msdApres), showLine: false,
+              pointRadius: 6, pointBackgroundColor: lignes.map(couleurDelta), pointBorderColor: '#fff', pointBorderWidth: 1.5,
+              backgroundColor: '#4f46e5', borderColor: '#4f46e5', order: 1 },
+            { type: 'line', label: `Seuil de sécurité (${seuil} mois)`, data: lignes.map(() => seuil), borderColor: '#b45309',
+              borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, order: 4 }
+          ] as any
         },
-        options: { ...baseOptions, plugins: { ...baseOptions.plugins, title: { display: true, text: 'Évolution MSD par produit/site', color: legendColor } } }
+        options: {
+          ...baseOptions,
+          indexAxis: 'y',
+          interaction: { mode: 'index', axis: 'y', intersect: false },
+          plugins: {
+            ...baseOptions.plugins,
+            title: { display: true, text: 'MSD avant → après le plan, par produit / site', color: legendColor },
+            legend: { labels: { color: legendColor, font: { size: 12 }, usePointStyle: true, filter: (it: any) => it.text !== 'Variation' } },
+            tooltip: { ...baseOptions.plugins.tooltip, filter: (it: any) => it.dataset.label !== 'Variation',
+              callbacks: { label: (c: any) => ` ${c.dataset.label} : ${Number(c.raw).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} mois` } }
+          },
+          scales: {
+            x: { ...baseOptions.scales.x, beginAtZero: true, title: { display: true, text: 'Mois de stock disponible', color: tickColor } },
+            y: { ...baseOptions.scales.y, grid: { display: false } }
+          }
+        } as any
       });
     }
 

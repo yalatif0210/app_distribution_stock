@@ -4,6 +4,23 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.3.0] - 2026-11-19
+
+### Ajouté
+- Tableau de bord, onglet **Synthèses** : carte des statuts sites × produits (avant / après),
+  dispersion des MSD entre sites (boîtes à moustaches), péremptions évitées et lots à risque,
+  alerte précoce des ruptures à venir, ruptures et surstocks chroniques, fiabilité d'exécution
+  par site source, flux entre districts. Chaque analyse a une explication, une **lecture** et
+  des actions **« À faire »** calculées par règles.
+- **Barèmes des synthèses** réglables par l'administrateur (Paramètres), migration `V15`.
+- Graphique MSD « en haltères » avec le seuil de sécurité, barres à 100 % de tous les produits
+  (onglet Proportions), courbes de tendance sur les cartes, encart « Ce que montre ce
+  graphique » sous chaque graphique.
+- Manuels et guide des indicateurs mis à jour.
+
+### Corrigé
+- Badges « BIEN_STOCKE » et « STOCK_DORMANT » sans couleur dans le tableau de l'onglet MSD.
+
 ## [1.2.0] - 2026-11-19
 
 ### Ajouté

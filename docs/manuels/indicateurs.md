@@ -131,12 +131,96 @@ Un produit est « suivi » quand au moins un site a soumis son état de stock po
 
 ### Les onglets
 
-- **A. Évolution MSD** : MSD avant et après de chaque site qui a participé au plan, comme expéditeur ou destinataire, produit par produit.
+- **Courbes des cartes** : sous la disponibilité, le taux bien stockés et l'indice de risque, une petite courbe retrace l'indicateur, situation avant plan, sur les dernières périodes de la région (jusqu'à 6). Elle dit si le plan agit sur une situation qui se dégrade ou qui s'améliore déjà.
+- **A. Évolution MSD** : MSD avant et après de chaque site qui a participé au plan, comme expéditeur ou destinataire, produit par produit. Le graphique « en haltères » relie, pour chaque couple produit / site, le point avant (gris) au point après : trait vert si le site gagne du stock, rouge s'il en cède. La ligne pointillée marque le seuil de sécurité de la région.
 - **B. Ruptures** : pour chaque produit concerné (au moins une rupture avant ou après), le nombre de sites en rupture avant et après. *Exemple* : Ocytocine 1 → 0, la rupture de l'hôpital est résorbée.
-- **C. Proportions de stockage** : pour le produit choisi, la répartition des sites par statut avant et après, en deux camemberts. Les stocks dormants sont comptés avec le surstock.
+- **C. Proportions de stockage** : en haut, des barres à 100 % comparent tous les produits d'un coup (une barre avant et une barre après par produit, découpées par statut) ; en dessous, pour le produit choisi, la répartition des sites par statut avant et après, en deux camemberts. Les stocks dormants sont comptés avec le surstock.
 - **D. Disponibilité** : voir le taux de disponibilité ci-dessus.
 - **Exécution** : avancement du plan et détail des mouvements.
 - **Analytics** : indicateurs composites et top 5 des mouvements à plus fort impact (gain de MSD chez le destinataire).
+- **Synthèses** : six analyses approfondies et les flux entre districts, décrits ci-dessous.
+
+Chaque graphique a un encart repliable **« Ce que montre ce graphique »** qui en donne la lecture.
+
+### G. L'onglet Synthèses
+
+Chaque analyse se présente en trois temps : une explication repliable (« Ce que montre cette analyse »), une visualisation, puis deux encadrés produits par le Système :
+
+- **Lecture** : ce qu'il faut retenir, en phrases ;
+- **À faire** : les actions conseillées.
+
+Ces textes sont calculés par des **règles fixes**, à partir de **barèmes** réglés par l'administrateur (valeurs par défaut entre parenthèses ci-dessous). Ils suivent la base « après » choisie (théorique ou exécutée).
+
+#### 1. Carte des statuts sites × produits
+
+Un tableau coloré : une ligne par site, une colonne par produit, la couleur du statut dans chaque case et le MSD en chiffre. On bascule entre « avant » et « après » ; les cases encadrées changent de statut avec le plan.
+
+> **Site fragile = site dont au moins X % des produits restent en tension ou en rupture après le plan** (barème « site fragile », 30 %)
+
+*Exemple* : le CSB de Mahasoa gère 5 produits ; après le plan, 2 sont encore en tension. 2 ÷ 5 = 40 %, au moins 30 % : il est signalé fragile, et l'encadré « À faire » propose de vérifier sa CMM et sa dotation. La lecture cite aussi le produit le plus tendu, celui dont la part de sites en tension ou rupture après le plan est la plus forte.
+
+#### 2. Dispersion des MSD entre sites
+
+Pour chaque produit consommé par au moins 3 sites, une **boîte à moustaches** avant et une après :
+
+- les moustaches vont du site le moins stocké au plus stocké ;
+- la boîte contient la moitié centrale des sites, du 1er quartile (Q1) au 3e quartile (Q3) ;
+- le trait dans la boîte est la médiane.
+
+> **Écart interquartile = Q3 − Q1**
+> **Variation = (écart après − écart avant) ÷ écart avant**
+
+Verdict :
+
+- resserrement d'au moins 20 % : **équilibrage net** (barème « équilibrage net ») ;
+- resserrement d'au moins 5 % : **équilibrage modéré** (barème « équilibrage modéré ») ;
+- élargissement de plus de 5 % : **déséquilibre** ; l'encadré « À faire » propose de revoir les mouvements du produit ;
+- entre les deux : **sans effet** ; si un site reste sous 1 mois, l'encadré propose de chercher d'autres sources ;
+- écart avant nul : **déjà équilibré**.
+
+*Exemple* : pour l'ASAQ adulte, l'écart passe de 1,6 à 0,8 mois, soit −48 % : équilibrage net.
+
+#### 3. Péremptions évitées et lots à risque
+
+La **quantité périmable** d'un site est la part de son stock qu'il ne consommera pas avant la date de péremption : ce qui dépasse CMM × mois restants. Pour un site qui ne consomme plus le produit (CMM nulle), tout le stock est périmable.
+
+> **Évitée = la plus petite valeur entre la quantité périmable et la quantité cédée par le plan**
+> **À risque = quantité périmable − quantité évitée**
+
+*Exemple* : un dépôt a 500 plaquettes qui périment dans 3 mois, pour une CMM de 100. Il en consommera 300 : 200 sont périmables. Le plan lui en fait céder 150 : 150 évitées, 50 encore à risque. L'encadré « À faire » liste les 5 premiers lots à risque, pour leur trouver un destinataire.
+
+#### 4. Alerte précoce : ruptures à venir
+
+> **Jours restants = MSD × 30,4 − jours écoulés depuis la date de l'état de stock**
+
+L'analyse compte les couples site/produit dont les jours restants sont inférieurs à l'horizon (barème « horizon d'alerte », 30 jours), sans le plan puis avec le plan, et liste ceux que le plan ne prévient pas.
+
+*Exemple* : état de stock du 1er octobre, analyse le 19 novembre, 49 jours plus tard. Un site à 2 mois de stock a 2 × 30,4 − 49 = **12 jours** restants : il est en alerte. Au-delà de 45 jours d'ancienneté, la lecture prévient que l'estimation suppose une consommation régulière et qu'un nouvel état est souhaitable.
+
+#### 5. Ruptures et surstocks chroniques
+
+L'analyse examine les dernières périodes de la région (barème « périodes examinées », 3), jusqu'à la période du plan.
+
+- Un couple site/produit en rupture au moins N fois (barème « chronique à partir de », 3) est une **rupture chronique** : ce n'est plus un problème de redistribution, mais de dotation ou de CMM sous-estimée. L'encadré propose de le signaler au programme.
+- Un site en surstock ou dormant au moins N fois sur un produit est en **surstock chronique** pour ce produit. Si c'est le cas d'au moins la moitié des sites qui suivent le produit, la dotation est probablement excessive.
+
+*Exemple* : sur les 3 dernières périodes, le CSB d'Ambatomena a été en rupture de tests de diagnostic 3 fois : rupture chronique. Tant que l'historique compte moins de périodes que le barème « chronique à partir de », la lecture indique qu'il est insuffisant.
+
+#### 6. Fiabilité de l'exécution par site source
+
+Sur les plans validés ces 12 derniers mois pour la même région et le même programme, pour chaque site expéditeur :
+
+> **Taux de livraison = moyenne, sur ses mouvements, de (quantité livrée ÷ quantité prévue), chaque mouvement plafonné à 100 %**
+
+- **En retard** : mouvement non terminé plus de 14 jours après la validation du plan (barème « retard ») ;
+- **Délai moyen** : jours entre la validation du plan et l'exécution ;
+- **Verdict** : fiabilité bonne à partir de 90 %, faible sous 60 %, moyenne entre les deux (barèmes « fiabilité bonne » et « fiabilité faible »).
+
+*Exemple* : le centre hospitalier a 3 mouvements, livrés à 100 %, 100 % et 0 % : (1 + 1 + 0) ÷ 3 = **66,7 %**, fiabilité moyenne. Comme un mouvement est en retard, l'encadré propose de vérifier ses moyens d'acheminement avant de le solliciter à nouveau.
+
+#### Flux entre districts
+
+Un diagramme de flux : à gauche les districts d'où partent les produits, à droite ceux qui les reçoivent, l'épaisseur des bandes proportionnelle au nombre de mouvements. La lecture donne la part des mouvements internes à un district et le flux principal. Si un trajet entre deux districts différents concentre au moins 40 % des mouvements, l'encadré « À faire » propose un transport groupé.
 
 ### H. Progression annuelle
 

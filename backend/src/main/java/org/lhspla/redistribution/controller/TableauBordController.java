@@ -17,6 +17,7 @@ public class TableauBordController {
     private final TableauBordService tableauBordService;
     private final PlanReattributionService planService;
     private final PerimetreService perimetreService;
+    private final org.lhspla.redistribution.service.AnalysesService analysesService;
 
     /**
      * Tableau de bord d'un plan. La région est celle du plan (le paramètre regionId
@@ -34,5 +35,28 @@ public class TableauBordController {
             @RequestParam(required = false) String base) {
         Long regionDuPlan = perimetreService.courant().regionObligatoire(planService.regionDuPlan(planId));
         return ResponseEntity.ok(tableauBordService.calculer(periodeId, programmeId, regionDuPlan, planId, base));
+    }
+
+    /** Les six analyses du plan (onglet « Analyses »), avec lecture et actions « À faire ». */
+    @GetMapping("/analyses")
+    @PreAuthorize("hasAnyRole('PHARMACIEN_REGION', 'SUPERVISEUR', 'ADMIN')")
+    public ResponseEntity<org.lhspla.redistribution.dto.response.AnalysesDTO> getAnalyses(
+            @RequestParam Long periodeId,
+            @RequestParam Long programmeId,
+            @RequestParam Long planId,
+            @RequestParam(required = false) String base) {
+        Long regionDuPlan = perimetreService.courant().regionObligatoire(planService.regionDuPlan(planId));
+        return ResponseEntity.ok(analysesService.calculer(periodeId, programmeId, regionDuPlan, planId, base));
+    }
+
+    /** Indicateurs des six dernières périodes de la région du plan (mini-courbes des cartes). */
+    @GetMapping("/tendances")
+    @PreAuthorize("hasAnyRole('PHARMACIEN_REGION', 'SUPERVISEUR', 'ADMIN')")
+    public ResponseEntity<java.util.List<org.lhspla.redistribution.service.AnalysesService.Tendance>> getTendances(
+            @RequestParam Long periodeId,
+            @RequestParam Long programmeId,
+            @RequestParam Long planId) {
+        Long regionDuPlan = perimetreService.courant().regionObligatoire(planService.regionDuPlan(planId));
+        return ResponseEntity.ok(analysesService.tendances(regionDuPlan, programmeId, periodeId, 6));
     }
 }

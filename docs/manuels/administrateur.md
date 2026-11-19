@@ -60,8 +60,15 @@ Un compte désactivé ne peut plus se connecter.
 **Administration → Paramètres région** :
 - **Seuil de sécurité d'une région** : choisissez la région, puis le nombre de mois de stock qu'un site expéditeur doit garder. Le pharmacien de région peut aussi le régler pour sa région.
 - **Seuils des statuts de stock**, communs à toutes les régions : tension, à surveiller, surstock (1, 2 et 4 mois par défaut). Ils colorent les écrans et alimentent les proportions. À l'enregistrement, le statut de **toutes les saisies existantes**, périodes passées comprises, est recalculé.
+- **Barèmes des synthèses**, communs à toutes les régions : ils fixent à partir de quand l'onglet « Synthèses » du tableau de bord juge un résultat bon ou mauvais, et donc ses encadrés « Lecture » et « À faire ». Ils ne modifient aucune donnée ni aucun plan. Valeurs par défaut :
+    - équilibrage net à partir de 20 % de resserrement, modéré à partir de 5 % ;
+    - site fragile à partir de 30 % de produits en tension ou rupture ;
+    - horizon d'alerte de 30 jours ;
+    - 3 périodes examinées, chronique à partir de 3 fois ;
+    - fiabilité bonne à partir de 90 % livré, faible sous 60 % ;
+    - retard au-delà de 14 jours.
 
-Voir le [guide des indicateurs](indicateurs.md#statut-du-stock).
+Voir le [guide des indicateurs](indicateurs.md#statut-du-stock) et, pour les barèmes, [l'onglet Synthèses](indicateurs.md#g-longlet-syntheses).
 
 ## 3. Les plans
 

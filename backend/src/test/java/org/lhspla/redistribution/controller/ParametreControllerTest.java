@@ -44,6 +44,7 @@ class ParametreControllerTest {
     @Mock UtilisateurRepository utilisateurRepo;
     @Mock StructureRepository structureRepo;
     @Mock SeuilsStatutService seuilsStatutService;
+    @Mock org.lhspla.redistribution.service.ParametresAnalyseService parametresAnalyseService;
 
     ParametreController controller;
 
@@ -53,7 +54,7 @@ class ParametreControllerTest {
     @BeforeEach
     void setUp() {
         controller = new ParametreController(regionRepo, utilisateurRepo,
-                new PerimetreService(utilisateurRepo, structureRepo), seuilsStatutService);
+                new PerimetreService(utilisateurRepo, structureRepo), seuilsStatutService, parametresAnalyseService);
         // Standalone setup : pas de contexte Spring Security chargé.
         // AuthenticationPrincipalArgumentResolver lit SecurityContextHolder.
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

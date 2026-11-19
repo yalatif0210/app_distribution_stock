@@ -15,6 +15,7 @@ import { SeuilsStatut, SeuilsStatutService } from '../../core/services/seuils-st
 import { ReferentielService } from '../../core/services/referentiel.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { Region } from '../../core/models/models';
+import { AnalysesService, Baremes } from '../../core/services/analyses.service';
 
 @Component({
   selector: 'app-parametres',
@@ -25,6 +26,11 @@ import { Region } from '../../core/models/models';
     MatIconModule, MatProgressSpinnerModule, MatSnackBarModule,
     MatSelectModule, MatTooltipModule
   ],
+  styles: [`
+    .bareme-groupe { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+                     color:var(--text-secondary); margin:.25rem 0 .4rem; }
+    .bareme-grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:.75rem; }
+  `],
   template: `
     <div class="page-header">
       <h1>Paramètres</h1>
@@ -150,6 +156,93 @@ import { Region } from '../../core/models/models';
         </mat-card-actions>
       </mat-card>
 
+      <!-- Barèmes de lecture des synthèses (admin) -->
+      <mat-card *ngIf="auth.isAdmin() && editBaremes" style="margin-top:1.5rem;">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon style="vertical-align:middle; margin-right:.5rem;">insights</mat-icon>
+            Barèmes des synthèses
+          </mat-card-title>
+          <mat-card-subtitle>
+            Communs à toutes les régions. Ils fixent à partir de quand l'onglet « Synthèses » du tableau de bord
+            juge un résultat bon ou mauvais, et donc la lecture et les actions « À faire » qu'il propose.
+            Ils ne changent aucune donnée ni aucun plan.
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content style="padding-top:1.25rem;">
+          <div class="bareme-groupe">Dispersion des MSD : resserrement de l'écart entre sites</div>
+          <div class="bareme-grille">
+            <mat-form-field appearance="fill">
+              <mat-label>Équilibrage net à partir de</mat-label>
+              <input matInput type="number" min="1" max="100" step="1" [(ngModel)]="editBaremes.equilibrageNetPct" [disabled]="savingBaremes">
+              <span matTextSuffix>%</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>Équilibrage modéré à partir de</mat-label>
+              <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="editBaremes.equilibrageModerePct" [disabled]="savingBaremes">
+              <span matTextSuffix>%</span>
+            </mat-form-field>
+          </div>
+
+          <div class="bareme-groupe">Carte sites × produits et alerte précoce</div>
+          <div class="bareme-grille">
+            <mat-form-field appearance="fill" matTooltip="Un site est dit fragile si au moins cette part de ses produits reste en tension ou en rupture après le plan">
+              <mat-label>Site fragile à partir de</mat-label>
+              <input matInput type="number" min="1" max="100" step="5" [(ngModel)]="editBaremes.fragilitePct" [disabled]="savingBaremes">
+              <span matTextSuffix>% de produits</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill" matTooltip="Ruptures attendues dans ce délai à compter d'aujourd'hui">
+              <mat-label>Horizon d'alerte</mat-label>
+              <input matInput type="number" min="1" max="365" step="1" [(ngModel)]="editBaremes.alerteHorizonJours" [disabled]="savingBaremes">
+              <span matTextSuffix>jours</span>
+            </mat-form-field>
+          </div>
+
+          <div class="bareme-groupe">Ruptures et surstocks chroniques</div>
+          <div class="bareme-grille">
+            <mat-form-field appearance="fill">
+              <mat-label>Périodes examinées</mat-label>
+              <input matInput type="number" min="2" max="24" step="1" [(ngModel)]="editBaremes.chroniqueFenetre" [disabled]="savingBaremes">
+              <span matTextSuffix>périodes</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>Chronique à partir de</mat-label>
+              <input matInput type="number" min="1" max="24" step="1" [(ngModel)]="editBaremes.chroniqueOccurrences" [disabled]="savingBaremes">
+              <span matTextSuffix>fois</span>
+            </mat-form-field>
+          </div>
+
+          <div class="bareme-groupe">Fiabilité de l'exécution par site source</div>
+          <div class="bareme-grille">
+            <mat-form-field appearance="fill">
+              <mat-label>Fiabilité bonne à partir de</mat-label>
+              <input matInput type="number" min="1" max="100" step="5" [(ngModel)]="editBaremes.fiabiliteBonnePct" [disabled]="savingBaremes">
+              <span matTextSuffix>% livré</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>Fiabilité faible en dessous de</mat-label>
+              <input matInput type="number" min="0" max="100" step="5" [(ngModel)]="editBaremes.fiabiliteFaiblePct" [disabled]="savingBaremes">
+              <span matTextSuffix>% livré</span>
+            </mat-form-field>
+            <mat-form-field appearance="fill" matTooltip="Un mouvement non exécuté passé ce délai après la validation du plan est compté en retard">
+              <mat-label>Retard au-delà de</mat-label>
+              <input matInput type="number" min="1" max="365" step="1" [(ngModel)]="editBaremes.retardJours" [disabled]="savingBaremes">
+              <span matTextSuffix>jours</span>
+            </mat-form-field>
+          </div>
+
+          <div *ngIf="erreurBaremesLocale" style="margin-top:.25rem;color:#dc2626;font-size:.85rem;">{{ erreurBaremesLocale }}</div>
+          <div *ngIf="erreurBaremes" style="margin-top:.25rem;color:#dc2626;font-size:.85rem;">{{ erreurBaremes }}</div>
+        </mat-card-content>
+        <mat-card-actions align="end" style="padding:1rem 1.5rem;">
+          <button mat-stroked-button (click)="annulerBaremes()" [disabled]="savingBaremes">Annuler</button>
+          <button mat-flat-button color="primary" (click)="sauvegarderBaremes()"
+                  [disabled]="savingBaremes || !!erreurBaremesLocale" style="margin-left:.75rem;">
+            <mat-icon>save</mat-icon> Enregistrer
+          </button>
+        </mat-card-actions>
+      </mat-card>
+
       <!-- Aide contextuelle -->
       <mat-card style="margin-top:1.5rem; background:#fffbeb; border:1px solid #fcd34d;">
         <mat-card-content style="padding:1rem;">
@@ -216,6 +309,58 @@ export class ParametresComponent implements OnInit {
     });
   }
 
+  // Barèmes des synthèses (admin)
+  private analysesService = inject(AnalysesService);
+  private baremesEnregistres: Baremes | null = null;
+  editBaremes: Baremes | null = null;
+  savingBaremes = false;
+  erreurBaremes = '';
+
+  /** Même contrôle que le serveur, pour guider la saisie. */
+  get erreurBaremesLocale(): string {
+    const b = this.editBaremes;
+    if (!b) return '';
+    const n = (v: number) => v === null || v === undefined || isNaN(v);
+    if (Object.values(b).some(v => n(v as number))) return 'Tous les barèmes doivent être renseignés.';
+    if (b.equilibrageModerePct < 0 || b.equilibrageModerePct >= b.equilibrageNetPct || b.equilibrageNetPct > 100)
+      return 'Équilibrage : 0 ≤ seuil « modéré » < seuil « net » ≤ 100 %.';
+    if (b.alerteHorizonJours < 1 || b.alerteHorizonJours > 365) return 'Horizon d\'alerte : entre 1 et 365 jours.';
+    if (b.chroniqueFenetre < 2 || b.chroniqueFenetre > 24 || b.chroniqueOccurrences < 1 || b.chroniqueOccurrences > b.chroniqueFenetre)
+      return 'Chronicité : 2 à 24 périodes examinées, et un nombre de fois entre 1 et ce nombre de périodes.';
+    if (b.fiabiliteFaiblePct < 0 || b.fiabiliteFaiblePct >= b.fiabiliteBonnePct || b.fiabiliteBonnePct > 100)
+      return 'Fiabilité : 0 ≤ seuil « faible » < seuil « bonne » ≤ 100 %.';
+    if (b.retardJours < 1 || b.retardJours > 365) return 'Retard : entre 1 et 365 jours.';
+    if (b.fragilitePct <= 0 || b.fragilitePct > 100) return 'Site fragile : entre 1 et 100 %.';
+    return '';
+  }
+
+  chargerBaremes(): void {
+    this.analysesService.baremes().subscribe(b => { this.baremesEnregistres = b; this.editBaremes = { ...b }; });
+  }
+
+  annulerBaremes(): void {
+    if (this.baremesEnregistres) this.editBaremes = { ...this.baremesEnregistres };
+    this.erreurBaremes = '';
+  }
+
+  sauvegarderBaremes(): void {
+    if (!this.editBaremes || this.erreurBaremesLocale) return;
+    this.savingBaremes = true;
+    this.erreurBaremes = '';
+    this.analysesService.modifierBaremes(this.editBaremes).subscribe({
+      next: b => {
+        this.baremesEnregistres = b;
+        this.editBaremes = { ...b };
+        this.savingBaremes = false;
+        this.snackBar.open('Barèmes des synthèses enregistrés.', 'OK', { duration: 3000 });
+      },
+      error: err => {
+        this.erreurBaremes = err.error?.message || 'Erreur lors de la sauvegarde.';
+        this.savingBaremes = false;
+      }
+    });
+  }
+
   constructor(
     private parametreService: ParametreService,
     private referentielService: ReferentielService,
@@ -226,6 +371,7 @@ export class ParametresComponent implements OnInit {
   ngOnInit(): void {
     if (this.auth.isAdmin()) {
       this.chargerSeuilsStatut();
+      this.chargerBaremes();
       this.referentielService.getRegions().subscribe(regions => {
         this.regions = regions;
         if (regions.length > 0) {
