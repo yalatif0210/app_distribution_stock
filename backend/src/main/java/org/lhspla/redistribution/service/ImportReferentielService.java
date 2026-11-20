@@ -135,7 +135,7 @@ public class ImportReferentielService {
                 }
 
                 try {
-                    // Upsert Programme — cherche toujours par nom en priorité
+                    // Upsert Programme : cherche toujours par nom en priorité
                     Optional<Programme> existingProg = programmeRepo.findByNomIgnoreCase(nomProgramme);
                     Programme programme;
                     if (existingProg.isPresent()) {
@@ -162,7 +162,7 @@ public class ImportReferentielService {
                         }
                     }
 
-                    // Upsert Produit — unicité sur (code, programme)
+                    // Upsert Produit : unicité sur (code, programme)
                     Optional<Produit> existing = codeProduit.isBlank()
                         ? produitRepo.findByNomIgnoreCaseAndProgrammeId(nomProduit, programme.getId())
                         : produitRepo.findByCodeIgnoreCaseAndProgrammeId(codeProduit, programme.getId());

@@ -1,4 +1,4 @@
-# Plan de développement — Outil de Redistribution Intelligente de Stocks Sanitaires
+# Plan de développement : Outil de Redistribution Intelligente de Stocks Sanitaires
 
 ## Contexte du projet
 
@@ -8,10 +8,10 @@ Développer un outil web permettant aux gestionnaires en pharmacie et aux pharma
 
 ## Stack technique
 
-- **Frontend** : Angular 17+ (standalone components, **PrimeNG avec thème Poseidon** — https://poseidon.primeng.org/)
+- **Frontend** : Angular 17+ (standalone components, **PrimeNG avec thème Poseidon** : https://poseidon.primeng.org/)
 - **Backend** : Spring Boot 3.x (Java 17+, Spring Data JPA, Spring Security)
 - **Base de données** : PostgreSQL 15+
-- **IA** : Claude API (Anthropic) — modèle `claude-sonnet-4-20250514`
+- **IA** : Claude API (Anthropic) : modèle `claude-sonnet-4-20250514`
 - **Import Excel** : Apache POI (côté backend)
 - **Authentification** : JWT (Spring Security + jjwt)
 - **Planificateur** : Spring `@Scheduled` pour les rappels de suivi
@@ -226,7 +226,7 @@ CREATE TABLE notifications (
 );
 ```
 
-### Règles métier — seuils de stock
+### Règles métier : seuils de stock
 
 ```
 MSD (Mois de Stock Disponible) = stock_disponible / CMM
@@ -243,7 +243,7 @@ Stock de sécurité par défaut = CMM * 1 mois
 
 ---
 
-## Phase 1 — Fondations backend (Spring Boot + PostgreSQL)
+## Phase 1 : Fondations backend (Spring Boot + PostgreSQL)
 
 ### 1.1 Structure du projet Spring Boot
 
@@ -363,7 +363,7 @@ stock.securite.mois=1.0
 
 ---
 
-## Phase 2 — Import et saisie des stocks
+## Phase 2 : Import et saisie des stocks
 
 ### 2.1 Format Excel attendu pour l'import
 
@@ -391,7 +391,7 @@ public class ImportExcelService {
 }
 ```
 
-### 2.3 Endpoints REST — Stocks
+### 2.3 Endpoints REST : Stocks
 
 ```
 POST   /api/stocks/import                    # Upload fichier Excel
@@ -404,7 +404,7 @@ PUT    /api/stocks/{id}                      # Modifier une saisie
 
 ---
 
-## Phase 3 — Complétude des saisies et relances
+## Phase 3 : Complétude des saisies et relances
 
 ### 3.1 Concept de complétude
 
@@ -447,7 +447,7 @@ public class ComplétudeSaisieDTO {
 }
 ```
 
-### 3.4 Endpoints REST — Complétude et relances
+### 3.4 Endpoints REST : Complétude et relances
 
 ```
 GET    /api/completude?periodeId=&programmeId=&regionId=
@@ -470,7 +470,7 @@ DELETE /api/structure-programme/{id}
 
 ---
 
-## Phase 4 — Moteur d'analyse
+## Phase 4 : Moteur d'analyse
 
 ### 4.1 AnalyseStockService
 
@@ -524,7 +524,7 @@ public class AnalyseResultatDTO {
 
 ---
 
-## Phase 5 — Intégration Claude API (génération du plan IA)
+## Phase 5 : Intégration Claude API (génération du plan IA)
 
 ### 5.1 ClaudeIaService
 
@@ -597,7 +597,7 @@ public class ClaudeIaService {
 }
 ```
 
-### 5.2 Endpoints REST — Plans
+### 5.2 Endpoints REST : Plans
 
 ```
 POST   /api/plans/generer              # Lancer analyse + génération IA
@@ -612,7 +612,7 @@ DELETE /api/plans/{id}/lignes/{lgId}   # Supprimer une ligne
 
 ---
 
-## Phase 6 — Suivi d'exécution
+## Phase 6 : Suivi d'exécution
 
 ### 6.1 Mise à jour du statut des lignes
 
@@ -649,7 +649,7 @@ public class SchedulerService {
 
 ---
 
-## Phase 7 — Tableau de bord analytique (avant/après plan)
+## Phase 7 : Tableau de bord analytique (avant/après plan)
 
 ### 7.1 Objectif
 
@@ -657,7 +657,7 @@ Le tableau de bord permet au pharmacien de région (et à l'admin) de mesurer l'
 
 ### 7.2 Règle de calcul "après plan"
 
-Le calcul est **purement théorique** — on suppose que toutes les lignes du plan sont exécutées à 100% (quantite_proposee). Aucune nouvelle saisie n'est attendue.
+Le calcul est **purement théorique** : on suppose que toutes les lignes du plan sont exécutées à 100% (quantite_proposee). Aucune nouvelle saisie n'est attendue.
 
 ```
 Pour chaque ligne du plan (produit P, source S, cible C, quantite Q) :
@@ -681,18 +681,18 @@ Retourne un `TableauBordDTO` contenant toutes les métriques nécessaires au fro
 
 ### 7.4 Métriques à calculer et afficher
 
-#### A — Évolution des MSD par produit et par site
+#### A : Évolution des MSD par produit et par site
 - **Tableau** : une ligne par produit × site, colonnes : MSD avant | MSD après | Delta | icône de tendance
   - Icône ↑ verte si MSD après > MSD avant (gain)
   - Icône ↓ rouge si MSD après < MSD avant (perte)
   - Icône = grise si inchangé
-- **Graphique** : grouped bar chart horizontal — un groupe par produit, deux barres (avant/après) par site, avec couleur conditionnelle selon statut MSD
+- **Graphique** : grouped bar chart horizontal : un groupe par produit, deux barres (avant/après) par site, avec couleur conditionnelle selon statut MSD
 
-#### B — Ruptures par produit et par site
+#### B : Ruptures par produit et par site
 - **Tableau** : une ligne par produit, colonnes : nb sites en rupture avant | nb sites en rupture après | Delta avec icône
 - **Graphique** : grouped bar chart vertical comparant avant/après par produit
 
-#### C — Proportions de sites bien/mal stockés par produit
+#### C : Proportions de sites bien/mal stockés par produit
 Formules :
 ```
 Taux bien stockés (produit P) = (nb sites avec 2 ≤ MSD ≤ 4) / (nb sites total) × 100
@@ -701,31 +701,31 @@ Taux mal stockés (produit P)  = (nb sites avec MSD < 2 OU MSD > 4) / (nb sites 
                                = 100% - taux bien stockés
 
 Taux bien stockés (programme) = Σ(taux_bien_stockés_p × nb_sites_p) / Σ(nb_sites_p)
-                               — moyenne pondérée par nombre de sites par produit
+                               moyenne pondérée par nombre de sites par produit
 
 Taux mal stockés (programme)  = 100% - taux bien stockés programme
 ```
-- **Graphique** : stacked bar chart (100%) — une barre avant et une barre après par produit
+- **Graphique** : stacked bar chart (100%) : une barre avant et une barre après par produit
   - Segments colorés par statut : rouge (rupture), orange (tension), jaune (surveiller), vert (normal), violet (surstock)
 
-#### D — Taux de disponibilité par produit et par programme
+#### D : Taux de disponibilité par produit et par programme
 Formules :
 ```
 Taux disponibilité (produit P) = (nb sites avec MSD > 0) / (nb sites total) × 100
-                                — tout site hors rupture est considéré "disponible"
+                                tout site hors rupture est considéré "disponible"
 
 Taux disponibilité (programme) = Σ(taux_dispo_p × nb_sites_p) / Σ(nb_sites_p)
-                                — moyenne pondérée par nombre de sites par produit
-                                — équivaut à : nb combinaisons (site×produit) avec MSD>0
+                                moyenne pondérée par nombre de sites par produit
+                                équivaut à : nb combinaisons (site×produit) avec MSD>0
                                                / nb total combinaisons (site×produit)
 ```
 - **Affichage** : tableau avec barres de progression doubles (avant/après) + delta avec icône
 
-#### E — Métriques analytiques additionnelles (enrichissement expert)
+#### E : Métriques analytiques additionnelles (enrichissement expert)
 - **Score d'impact global du plan** : somme des gains MSD sur l'ensemble des sites, normalisée
 - **Top 5 mouvements les plus impactants** : classés par gain MSD sur la structure cible
 - **Taux de couverture programme** : % de produits en statut NORMAL après exécution du plan
-- **Indice de risque régional avant/après** : (nb ruptures × 3) + (nb tensions × 2) + (nb surstock × 1) — score composite à minimiser
+- **Indice de risque régional avant/après** : (nb ruptures × 3) + (nb tensions × 2) + (nb surstock × 1) : score composite à minimiser
 - **Complétude d'exécution du plan** : % de lignes du plan réellement exécutées (EXECUTE ou PARTIEL)
 
 ### 7.5 TableauBordController (Spring Boot)
@@ -748,7 +748,7 @@ public class TableauBordController {
 
 ---
 
-## Phase 8 — Frontend Angular (PrimeNG Poseidon)
+## Phase 8 : Frontend Angular (PrimeNG Poseidon)
 
 ### 8.1 Structure des modules Angular
 
@@ -793,31 +793,31 @@ src/app/
 
 ### 8.2 Vues clés à développer
 
-#### Vue GESTIONNAIRE — Saisie de stock (`/stocks/saisie`)
+#### Vue GESTIONNAIRE : Saisie de stock (`/stocks/saisie`)
 - Formulaire de saisie par produit pour sa structure
 - Import Excel de sa structure
 - Historique des saisies passées (filtres par période)
 - Consultation lecture seule des plans générés et de leur avancement
 
-#### Vue PHARMACIEN_REGION — Complétude des saisies (`/completude`)
+#### Vue PHARMACIEN_REGION : Complétude des saisies (`/completude`)
 - Filtres : Période (sélection par date_ras) / Programme
 - Indicateur circulaire : X/Y structures ont saisi (taux en %)
 - Tableau des structures manquantes avec bouton "Relancer" individuel ou groupé
 - Lien vers configuration des structures actives par programme
 
-#### Vue PHARMACIEN_REGION — Configuration structures-programmes (`/structure-programme`)
+#### Vue PHARMACIEN_REGION : Configuration structures-programmes (`/structure-programme`)
 - Liste des structures de la région avec leurs programmes actifs
 - Toggle par programme pour activer/désactiver une structure
 - Sauvegarde immédiate via PATCH
 
-#### Vue PHARMACIEN_REGION — Génération de plan (`/plans/generation`)
+#### Vue PHARMACIEN_REGION : Génération de plan (`/plans/generation`)
 - Sélection période / programme / région
 - Bouton "Analyser et générer un plan"
 - Affichage du résumé narratif de l'IA (card avec icône IA)
 - Tableau des mouvements proposés (modifiable inline)
 - Bouton "Valider le plan"
 
-#### Vue PHARMACIEN_REGION + ADMIN — Tableau de bord analytique (`/tableau-bord`)
+#### Vue PHARMACIEN_REGION + ADMIN : Tableau de bord analytique (`/tableau-bord`)
 - Filtres : Période / Programme / Région (toutes pour ADMIN) / Plan
 - **Section A** : Tableau MSD avant/après avec icônes delta + grouped bar chart horizontal
 - **Section B** : Tableau ruptures avant/après par produit + bar chart vertical
@@ -867,7 +867,7 @@ PUT    /api/periodes/{id}/close         # Fermer manuellement une période OUVER
 
 ### Gestion d'erreurs
 - Toutes les erreurs API retournent un objet `{ code, message, details }`
-- Les erreurs d'appel Claude API ne doivent pas bloquer le workflow — proposer la génération manuelle en fallback
+- Les erreurs d'appel Claude API ne doivent pas bloquer le workflow : proposer la génération manuelle en fallback
 
 ---
 

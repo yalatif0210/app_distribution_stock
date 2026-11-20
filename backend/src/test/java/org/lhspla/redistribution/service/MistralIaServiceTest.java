@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class MistralIaServiceTest {
 
-    // Clés et URLs factices — ne jamais utiliser de vraies clés ici
+    // Clés et URLs factices : ne jamais utiliser de vraies clés ici
     private static final String FAKE_API_KEY = "PLACEHOLDER_MISTRAL_API_KEY_FOR_UNIT_TESTS_ONLY";
     private static final String FAKE_API_URL = "http://fake-mistral-api.test/v1/chat/completions";
 
@@ -100,7 +100,7 @@ class MistralIaServiceTest {
                   "source_id": 1,
                   "cible_id": 2,
                   "quantite_allouee": 50.0,
-                  "motif": "Mouvement sans produit — doit être ignoré"
+                  "motif": "Mouvement sans produit : doit être ignoré"
                 }
               ],
               "avertissements": ["Produit non identifié"]
@@ -126,7 +126,7 @@ class MistralIaServiceTest {
                   "source_id": 1,
                   "cible_id": 2,
                   "quantite_allouee": 0,
-                  "motif": "Quantité nulle — doit être ignorée"
+                  "motif": "Quantité nulle : doit être ignorée"
                 }
               ],
               "avertissements": []
@@ -151,7 +151,7 @@ class MistralIaServiceTest {
                   "source_id": null,
                   "cible_id": 2,
                   "quantite_allouee": 30.0,
-                  "motif": "Source nulle — doit être ignorée"
+                  "motif": "Source nulle : doit être ignorée"
                 }
               ],
               "avertissements": []
@@ -237,7 +237,7 @@ class MistralIaServiceTest {
                   "cible_nom": "CSB1 Ambohipo",
                   "quantite_allouee": 200.0,
                   "date_peremption": null,
-                  "motif": "Rupture — quantité supérieure au besoin indicatif (120)"
+                  "motif": "Rupture : quantité supérieure au besoin indicatif (120)"
                 }
               ],
               "avertissements": []
@@ -253,7 +253,7 @@ class MistralIaServiceTest {
 
     @Test
     void genererPlan_stock_dormant_peut_allouer_tout_son_stock() {
-        // Site STOCK_DORMANT (cmm=0, stock=300) — tout le stock redistribuable, pas de seuil MSD
+        // Site STOCK_DORMANT (cmm=0, stock=300) : tout le stock redistribuable, pas de seuil MSD
         String jsonContent = """
             {
               "resume": "Stock dormant entièrement redistribué.",
@@ -268,7 +268,7 @@ class MistralIaServiceTest {
                   "cible_nom": "CSB1 Ambohipo",
                   "quantite_allouee": 300.0,
                   "date_peremption": null,
-                  "motif": "Stock dormant — intégralité disponible à la redistribution"
+                  "motif": "Stock dormant : intégralité disponible à la redistribution"
                 }
               ],
               "avertissements": []

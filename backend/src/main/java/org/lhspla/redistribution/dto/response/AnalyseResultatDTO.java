@@ -42,7 +42,7 @@ public class AnalyseResultatDTO {
         private java.math.BigDecimal besoin;
         private java.math.BigDecimal excedent;
         private String statutStock;
-        /** Date de péremption FEFO du lot source — pour que l'IA puisse appliquer R4/R5. */
+        /** Date de péremption FEFO du lot source : pour que l'IA puisse appliquer R4/R5. */
         private java.time.LocalDate expireDateFefo;
         /** Allocations déjà planifiées depuis ce site pour ce produit (0 à la génération initiale). */
         private java.math.BigDecimal allocationsExistantes = java.math.BigDecimal.ZERO;

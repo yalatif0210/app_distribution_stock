@@ -403,7 +403,7 @@ public class PlanReattributionService {
 
     private void ajouterLigneDepuisIA(PlanReattribution plan, MistralIaService.MouvementIA mv) {
         if (mv.produit_id() == null || mv.source_id() == null || mv.cible_id() == null) {
-            log.warn("Mouvement IA ignoré — IDs manquants: {}", mv);
+            log.warn("Mouvement IA ignoré : IDs manquants: {}", mv);
             return;
         }
         Produit produit = produitRepo.findById(mv.produit_id())
@@ -455,7 +455,7 @@ public class PlanReattributionService {
             ligne.setNotes((motif + ajustement).trim());
         }
 
-        // R5 — date de péremption lue depuis la source, jamais depuis la réponse IA
+        // R5 : date de péremption lue depuis la source, jamais depuis la réponse IA
         saisieStockRepo.findByPeriodeIdAndStructureIdAndProduitId(
                 plan.getPeriode().getId(), source.getId(), produit.getId())
                 .ifPresent(s -> ligne.setExpireDate(s.getExpireDate()));
@@ -504,7 +504,7 @@ public class PlanReattributionService {
         return result;
     }
 
-    // ─── Stock source — calcul net + FEFO ────────────────────────────────────────
+    // ─── Stock source : calcul net + FEFO ────────────────────────────────────────
 
     public StockSourceDTO calculerStockSource(Long periodeId, Long produitId,
             Long structureSourceId, Long planId, Long excludeLigneId) {
@@ -645,6 +645,6 @@ public class PlanReattributionService {
 
     /** Le texte de l'IA est affiché tel quel : on remplace ses tirets cadratins. */
     private static String sansTiretCadratin(String texte) {
-        return texte.replace(" — ", ", ").replace("—", "-");
+        return texte.replace(" \u2014 ", ", ").replace("\u2014", "-");
     }
 }

@@ -140,24 +140,24 @@ Côté cible : prioriser les sites les plus en tension (rupture imminente, ratio
 Chaque objet de la liste "produits" est INDÉPENDANT. Les valeurs (date_peremption, cmm,
 stock_disponible, msd, statut) sont propres au LOT de CE produit dans CE site.
 Un même site peut apparaître dans plusieurs produits avec des statuts, des stocks et des
-dates de péremption DIFFÉRENTS — ces données ne se transfèrent jamais d'un produit à l'autre.
+dates de péremption DIFFÉRENTS : ces données ne se transfèrent jamais d'un produit à l'autre.
 Traiter chaque produit comme s'il était le seul dans le prompt.
 
 ## Structure des données
 
 Les données sont organisées par produit. Chaque produit contient deux listes pré-classifiées
-par le système — ne jamais intervertir les rôles :
+par le système : ne jamais intervertir les rôles :
 
-sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'éligibilité :
+sources_eligibles : sites autorisés à redistribuer ce produit. Deux cas d'éligibilité :
   • Condition A (au-dessus du seuil / stock dormant) : msd > seuil_stock_securite_msd, ou statut = STOCK_DORMANT.
   • Condition B (risque de péremption, cmm > 0 uniquement) : msd > mois_restants avant date_peremption.
     Surplus redistribuable = stock_disponible − (mois_restants × cmm).
     Ne redistribuer que l'excédent que le site ne peut pas consommer avant péremption.
   ATTENTION : la date_peremption d'une source STOCK_DORMANT est une raison supplémentaire de
-  redistribuer en urgence — jamais un motif de blocage. Condition B ne s'applique pas à STOCK_DORMANT.
+  redistribuer en urgence : jamais un motif de blocage. Condition B ne s'applique pas à STOCK_DORMANT.
   Un site peut figurer dans les deux listes simultanément si le backend détecte un risque de
   péremption sur un site classifié TENSION. Dans ce cas, son rôle source est limité à son
-  surplus calculé — il reste cible pour le reste de son besoin.
+  surplus calculé : il reste cible pour le reste de son besoin.
   Champs : site_id, site_nom, statut (SURSTOCK|STOCK_DORMANT|BIEN_STOCKE|SURVEILLER),
            stock_disponible (net, allocations déjà déduites), cmm, msd,
            date_peremption, excedent.
@@ -167,70 +167,70 @@ sources_eligibles — sites autorisés à redistribuer ce produit. Deux cas d'é
   Ne jamais allouer plus que excedent depuis une source : le système ramène toute quantité supérieure.
   Si cette liste est vide → aucune redistribution possible pour ce produit → avertissements.
 
-cibles — sites RUPTURE ou TENSION qui ont besoin de ce produit.
+cibles : sites RUPTURE ou TENSION qui ont besoin de ce produit.
   RUPTURE et TENSION sont tous les deux des cibles valides. Une liste de cibles contenant
   uniquement des sites TENSION est tout à fait suffisante pour déclencher des allocations.
   Un site TENSION peut aussi figurer dans sources_eligibles s'il présente un risque de péremption
-  (double rôle) — son rôle cible est indépendant et inchangé.
+  (double rôle) : son rôle cible est indépendant et inchangé.
   Champs : site_id, site_nom, statut (RUPTURE|TENSION),
            stock_disponible, cmm, msd, date_peremption,
-           besoin (indicateur de priorisation — ne plafonne pas l'allocation).
+           besoin (indicateur de priorisation : ne plafonne pas l'allocation).
 
 %s
 
-## Règles — non négociables
+## Règles : non négociables
 
-R1 — ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles.
+R1. ÉLIGIBILITÉ SOURCE : utiliser uniquement les sites de sources_eligibles.
      a) msd > seuil, quel que soit le statut : MSD résiduelle = (stock_disponible − quantite_allouee) / cmm
         doit rester ≥ seuil_stock_securite_msd (%.1f) après allocation.
         quantite_max_allouable = stock_disponible − (cmm × seuil_stock_securite_msd).
      b) statut = STOCK_DORMANT : tout le stock_disponible est redistribuable sans exception.
         cmm = 0 → pas de seuil MSD à respecter. date_peremption → urgence de redistribuer, pas un blocage.
-     c) Risque de péremption — statut BIEN_STOCKE, SURVEILLER, ou SURSTOCK avec cmm > 0 :
+     c) Risque de péremption : statut BIEN_STOCKE, SURVEILLER, ou SURSTOCK avec cmm > 0 :
         Utiliser le champ duree_avant_expiry_mois fourni dans les données source.
         Ce champ est pré-calculé par le système : ne pas le recalculer ni le déduire du MSD.
         duree_avant_expiry_mois = mois calendaires entre date_du_jour et source.date_peremption.
-        Ce n'est PAS le MSD de la source ni celui de la cible — c'est une durée calendaire.
+        Ce n'est PAS le MSD de la source ni celui de la cible : c'est une durée calendaire.
         Si msd > duree_avant_expiry_mois : surplus = stock_disponible − (duree_avant_expiry_mois × cmm).
         quantite_max_allouable = surplus uniquement. Ne JAMAIS utiliser stock_disponible entier.
         La fraction (duree_avant_expiry_mois × cmm) reste à la source pour sa propre consommation.
         Cette condition s'applique également aux sources issues de sites TENSION à double rôle.
      Si sources_eligibles est vide → avertissement, aucune ligne pour ce produit.
 
-R2 — ÉLIGIBILITÉ CIBLE : utiliser uniquement les sites de cibles.
+R2. ÉLIGIBILITÉ CIBLE : utiliser uniquement les sites de cibles.
      Ne jamais utiliser un site de cibles comme source, même si son stock_disponible > 0.
      besoin est un indicateur de priorisation, pas un plafond : une cible peut recevoir plus
      que son besoin calculé si le stock redistribuable le permet.
      Un résultat qui n'alloue rien au motif que toutes les cibles sont en TENSION
      (et non en RUPTURE) est un résultat incorrect.
 
-R3 — PLAFOND SOURCE : la somme des quantite_allouee depuis une même source pour un même produit
+R3. PLAFOND SOURCE : la somme des quantite_allouee depuis une même source pour un même produit
      ne doit pas dépasser son stock redistribuable (calculé selon R1a, R1b ou R1c).
      Recalculer dynamiquement après chaque allocation.
 
-R4 — FEFO : reporter la date_peremption de la source (lot à péremption la plus proche).
+R4. FEFO : reporter la date_peremption de la source (lot à péremption la plus proche).
      Ne jamais inventer ni calculer cette date.
 
-R5 — BESOIN NON BLOQUANT : besoin est un indicateur de priorisation.
+R5. BESOIN NON BLOQUANT : besoin est un indicateur de priorisation.
      Ne pas limiter quantite_allouee au besoin calculé de la cible, ni au stock existant de la cible.
      Ne jamais bloquer ni écrêter une allocation au motif que la cible aurait atteint son besoin.
      Allouer le maximum autorisé par R1 et R3.
      Invoquer le besoin comme motif de non-allocation est une violation de cette règle.
      Si une source éligible existe et qu'une cible valide existe, une allocation doit être générée.
 
-R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'allocation
+R6. MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'allocation
      dans la limite de la capacité d'absorption de chaque cible avant la date de péremption.
      Ne jamais transférer le risque de péremption de la source vers la cible.
 
      Capacité d'absorption d'une cible pour ce lot :
        capacite_cible = cible_cmm × source.duree_avant_expiry_mois
-     cible_cmm = champ "cmm" dans la liste cibles pour ce site (valeur fournie — ne pas calculer).
+     cible_cmm = champ "cmm" dans la liste cibles pour ce site (valeur fournie : ne pas calculer).
      source.duree_avant_expiry_mois = champ "duree_avant_expiry_mois" dans les données source
-       (pré-calculé : mois calendaires jusqu'à expiry du lot source — ne pas recalculer).
+       (pré-calculé : mois calendaires jusqu'à expiry du lot source, ne pas recalculer).
      ERREUR CRITIQUE À ÉVITER : confondre duree_avant_expiry_mois avec le MSD de la cible
        (stock_cible/cmm_cible). Ce sont deux grandeurs différentes.
        Exemple : duree_avant_expiry_mois=6.97 si source expire dans 209 jours ;
-                 MSD_cible=1.95 si la cible a 1950 unités et cmm=1000 — NE PAS confondre.
+                 MSD_cible=1.95 si la cible a 1950 unités et cmm=1000 : NE PAS confondre.
      Confondre la cmm de la source (cmm=0 pour STOCK_DORMANT) avec celle de la cible est
      également une erreur grave.
      Ne pas allouer à une cible plus que sa capacite_cible.
@@ -248,7 +248,7 @@ R6 — MAXIMISER STOCK_DORMANT : depuis une source STOCK_DORMANT, maximiser l'al
      Un stock STOCK_DORMANT non alloué en présence d'au moins une cible valide
      (RUPTURE ou TENSION) alors que capacite_cible > 0 est un résultat incorrect.
 
-R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
+R7. PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-même en tension.
      Après allocation, le stock résiduel de la source doit couvrir sa propre MSD.
      Exception 1 : ne s'applique PAS aux sources STOCK_DORMANT (cmm = 0 → voir R6).
      Exception 2 : pour une source éligible via Condition B (BIEN_STOCKE, SURVEILLER),
@@ -256,16 +256,16 @@ R7 — PRÉSERVATION SOURCE : aucune allocation ne doit mettre la source elle-m�
        La source conserve uniquement : duree_avant_expiry_mois × cmm (consommation propre avant expiry).
        Le reste (surplus = stock_disponible − duree_avant_expiry_mois × cmm) est redistribuable,
        même si cela amène le stock résiduel en dessous du seuil MSD habituel.
-       Justification : le lot expire de toute façon — le seuil MSD ne peut pas être maintenu.
-     On redistribue un excédent — on ne crée pas un nouveau problème.
+       Justification : le lot expire de toute façon, le seuil MSD ne peut pas être maintenu.
+     On redistribue un excédent : on ne crée pas un nouveau problème.
 
-R8 — PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour couvrir toutes les cibles,
+R8. PRIORISATION CIBLES : si le stock redistribuable est insuffisant pour couvrir toutes les cibles,
      allouer en priorité au site présentant le ratio stock/MSD le plus faible (plus critique).
      Traiter les RUPTURE avant les TENSION à ratio égal.
 
-R9 — INUTILE : ne générer aucune ligne si quantite_allouee = 0.
+R9. INUTILE : ne générer aucune ligne si quantite_allouee = 0.
 
-R10 — DOUBLE RÔLE : un site peut être simultanément source et cible sur un même produit.
+R10. DOUBLE RÔLE : un site peut être simultanément source et cible sur un même produit.
      Condition de déclenchement : site classifié TENSION, cmm > 0, et msd > mois_restants.
      En tant que source : son stock redistribuable est limité au surplus voué à périmer.
        surplus = stock_disponible − (mois_restants × cmm)
@@ -273,7 +273,7 @@ R10 — DOUBLE RÔLE : un site peut être simultanément source et cible sur un 
      Ces deux allocations sont indépendantes et doivent toutes deux apparaître dans le plan.
      Motif source : "Source secondaire : risque de péremption sur site en tension"
 
-## Format de sortie — JSON strict, sans aucun texte avant ou après
+## Format de sortie : JSON strict, sans aucun texte avant ou après
 
 {
   "resume": "Synthèse narrative du plan (3 à 5 lignes)",

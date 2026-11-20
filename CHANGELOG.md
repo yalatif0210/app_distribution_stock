@@ -4,6 +4,14 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.3.1] - 2026-11-20
+
+### Corrigé
+- Tableau de bord : le superviseur et l'admin voient la région de chaque période et de chaque
+  plan dans les listes, et un bandeau identifie le plan affiché (région, programme, période,
+  statut, validation, mode de construction).
+- Plus aucun tiret cadratin dans le code, les libellés, les prompts IA et la documentation.
+
 ## [1.3.0] - 2026-11-19
 
 ### Ajouté

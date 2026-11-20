@@ -40,7 +40,7 @@ class PlanReattributionServiceTest {
 
     @InjectMocks private PlanReattributionService service;
 
-    // ── generer — un seul brouillon par périmètre ────────────────────────────────
+    // ── generer : un seul brouillon par périmètre ────────────────────────────────
 
     @Test
     void generer_refuse_si_un_brouillon_existe_sans_demande_de_remplacement() {
@@ -92,7 +92,7 @@ class PlanReattributionServiceTest {
         verify(mistralIaService, never()).genererPlan(any(), anyDouble());
     }
 
-    // ── supprimerLigne — plan BROUILLON ──────────────────────────────────────────
+    // ── supprimerLigne : plan BROUILLON ──────────────────────────────────────────
 
     @Test
     void supprimerLigne_accepte_tout_role_si_plan_est_brouillon() {
@@ -107,7 +107,7 @@ class PlanReattributionServiceTest {
         verify(ligneRepo).delete(ligne);
     }
 
-    // ── supprimerLigne — plan VALIDE, restriction de rôle ───────────────────────
+    // ── supprimerLigne : plan VALIDE, restriction de rôle ───────────────────────
 
     @Test
     void supprimerLigne_interdit_au_gestionnaire_sur_plan_valide() {
@@ -152,7 +152,7 @@ class PlanReattributionServiceTest {
         verify(ligneRepo).delete(ligne);
     }
 
-    // ── supprimerLigne — plan CLOTURE ────────────────────────────────────────────
+    // ── supprimerLigne : plan CLOTURE ────────────────────────────────────────────
 
     @Test
     void supprimerLigne_refuse_si_plan_est_cloture() {
@@ -165,7 +165,7 @@ class PlanReattributionServiceTest {
                 .hasMessageContaining("clôturé");
     }
 
-    // ── executerLigne — préconditions ────────────────────────────────────────────
+    // ── executerLigne : préconditions ────────────────────────────────────────────
 
     @Test
     void executerLigne_refuse_si_plan_est_en_brouillon() {
@@ -180,7 +180,7 @@ class PlanReattributionServiceTest {
                 .hasMessageContaining("validé");
     }
 
-    // ── executerLigne — transitions de statut ────────────────────────────────────
+    // ── executerLigne : transitions de statut ────────────────────────────────────
 
     @Test
     void executerLigne_passe_a_EXECUTE_quand_quantite_atteint_proposee() {
@@ -236,7 +236,7 @@ class PlanReattributionServiceTest {
         assertThat(captor.getValue().getStatut()).isEqualTo("PARTIEL");
     }
 
-    // ── verifierCloturePlan — auto-clôture ───────────────────────────────────────
+    // ── verifierCloturePlan : auto-clôture ───────────────────────────────────────
 
     @Test
     void plan_passe_a_CLOTURE_quand_toutes_les_lignes_sont_executees() {

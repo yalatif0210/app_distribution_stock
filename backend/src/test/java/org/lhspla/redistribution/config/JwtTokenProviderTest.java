@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class JwtTokenProviderTest {
 
-    // Clé factice — longueur >= 512 bits pour éviter les avertissements HS256.
+    // Clé factice : longueur >= 512 bits pour éviter les avertissements HS256.
     // NE PAS utiliser en production. Remplacer par une variable d'environnement sécurisée.
     private static final String PLACEHOLDER_JWT_SECRET =
             "placeholder-test-jwt-secret-key-do-not-use-in-production-environment";

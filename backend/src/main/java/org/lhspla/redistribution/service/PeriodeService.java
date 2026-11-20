@@ -138,7 +138,7 @@ public class PeriodeService {
         if (nbProgrammesAvecPlan >= nbProgrammesActifs) {
             periode.setStatut("FERMEE");
             periodeRepo.save(periode);
-            log.info("Fermeture automatique période {} — {}/{} programmes avec plan validé",
+            log.info("Fermeture automatique période {} : {}/{} programmes avec plan validé",
                     periodeId, nbProgrammesAvecPlan, nbProgrammesActifs);
         }
     }

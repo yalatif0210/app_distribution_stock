@@ -147,7 +147,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
           </div>
           <div class="defile" style="max-height:520px;">
             <div class="boite-ligne" *ngFor="let p of a.dispersion.produits">
-              <div class="nom" [matTooltip]="p.produit + ' — ' + p.nbSites + ' sites'">{{ p.produit }}</div>
+              <div class="nom" [matTooltip]="p.produit + ' : ' + p.nbSites + ' sites'">{{ p.produit }}</div>
               <svg viewBox="0 0 600 40" style="width:100%;height:auto;display:block;" role="img"
                    [attr.aria-label]="'Dispersion des MSD de ' + p.produit">
                 <ng-container *ngFor="let g of [0.25, 0.5, 0.75]">
@@ -331,7 +331,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
                   <span style="font-family:monospace;margin-left:.4rem;">{{ s.tauxLivraison | number:'1.0-1' }} %</span>
                 </td>
                 <td class="num" [style.color]="s.nbEnRetard ? '#b91c1c' : null">{{ s.nbEnRetard }}</td>
-                <td class="num">{{ s.delaiMoyenJours === null ? '—' : (s.delaiMoyenJours | number:'1.0-1') + ' j' }}</td>
+                <td class="num">{{ s.delaiMoyenJours === null ? '-' : (s.delaiMoyenJours | number:'1.0-1') + ' j' }}</td>
                 <td><span class="chip" [style.background]="verdictFiabilite(s.verdict).fond" style="color:#fff;">{{ verdictFiabilite(s.verdict).libelle }}</span></td>
               </tr>
             </tbody>
@@ -423,8 +423,8 @@ export class AnalysesOngletComponent implements OnChanges {
   }
 
   infoCellule(site: string, produit: string, c: Cellule): string {
-    const f = (v: number | null) => v === null ? '—' : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
-    return `${site} — ${produit} : MSD ${f(c.msdAvant)} (${this.couleur(c.statutAvant).libelle}) → ${f(c.msdApres)} (${this.couleur(c.statutApres).libelle})`;
+    const f = (v: number | null) => v === null ? '-' : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    return `${site}, ${produit} : MSD ${f(c.msdAvant)} (${this.couleur(c.statutAvant).libelle}) → ${f(c.msdApres)} (${this.couleur(c.statutApres).libelle})`;
   }
 
   // ── Dispersion ────────────────────────────────────────────────────────────

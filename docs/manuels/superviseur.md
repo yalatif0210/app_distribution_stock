@@ -22,7 +22,10 @@ Quand vous suivez plusieurs régions, les écrans vous demandent de **préciser 
 
 ## 3. Analyser un plan
 
-**Tableau de bord** : choisissez période, programme et plan, puis **Analyser**. Avant et après le plan :
+**Tableau de bord** : choisissez période, programme et plan, puis **Analyser**. Chaque période et chaque plan de la liste indiquent leur région. Un bandeau rappelle ensuite le plan affiché : région, programme, période, statut, date de validation et pharmacien qui l'a validé, mode de construction (Système ou manuel).
+
+Avant et après le plan :
+
 - disponibilité ;
 - taux bien stockés ;
 - indice de risque ;

@@ -97,6 +97,29 @@ import {
 
     <ng-container *ngIf="!loading && data">
 
+      <!-- Identification du plan affiché -->
+      <div *ngIf="planAffiche as pl" role="note" aria-label="Plan affiché"
+           style="display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1.25rem;padding:.75rem 1rem;margin-bottom:1rem;
+                  background:var(--bg-card, #fff);border:1px solid var(--border-color);border-radius:.5rem;font-size:.85rem;">
+        <span style="font-weight:700;font-size:.95rem;">Plan #{{ pl.id }}</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;" matTooltip="Région du plan : il appartient au pharmacien de cette région">
+          <mat-icon style="font-size:18px;width:18px;height:18px;color:var(--accent-color);">place</mat-icon><b>{{ pl.regionNom }}</b>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;">
+          <mat-icon style="font-size:18px;width:18px;height:18px;color:var(--text-secondary);">medication</mat-icon>{{ pl.programmeNom }}
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;">
+          <mat-icon style="font-size:18px;width:18px;height:18px;color:var(--text-secondary);">event</mat-icon>Période {{ pl.periodeLibelle }}
+        </span>
+        <span class="badge" style="background:rgba(79,70,229,.1);color:#3730a3;border:1px solid rgba(79,70,229,.25);">{{ libelleStatutPlan(pl.statut) }}</span>
+        <span *ngIf="pl.dateValidation" style="color:var(--text-secondary);">
+          Validé le {{ pl.dateValidation | date:'dd/MM/yyyy' }}<ng-container *ngIf="pl.valideParUsername"> par <b style="color:var(--text-primary);">{{ pl.valideParUsername }}</b></ng-container>
+        </span>
+        <span style="color:var(--text-secondary);">
+          {{ pl.genereParlA && !pl.basculeManuel ? 'Généré par le Système (IA)' : 'Construit manuellement' }} le {{ pl.dateGeneration | date:'dd/MM/yyyy' }}
+        </span>
+      </div>
+
       <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.9rem;font-size:.82rem;color:var(--text-secondary);">
         <span style="font-weight:700;text-transform:uppercase;font-size:.7rem;letter-spacing:.05em;">« Après » le plan</span>
         <div role="radiogroup" aria-label="Base du calcul après le plan"
@@ -913,8 +936,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       : this.periodeService.findByRegion();
     p$.subscribe({
       next: (periodes) => {
+        // Admin et superviseur voient plusieurs régions : la date seule ne suffit pas à distinguer les périodes
+        const plusieursRegions = new Set(periodes.map(p => p.regionId)).size > 1;
         this.periodOptions = periodes.map(p => ({
-          label: p.libelle ?? p.dateRas,
+          label: (p.libelle ?? p.dateRas) + (plusieursRegions && p.regionNom ? ` · ${p.regionNom}` : ''),
           value: p.id,
           annee: p.dateRas ? Number(String(p.dateRas).slice(0, 4)) : (p as any).annee
         }));
@@ -965,13 +990,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
         const filtered = this.selectedProgrammeId
           ? plans.filter(p => p.programmeId === this.selectedProgrammeId)
           : plans;
+        this.plansListe = filtered;
         this.planOptions = filtered.map(p => ({
-          label: `Plan #${p.id} : ${p.statut} (${p.periodeLibelle})`,
+          label: `Plan #${p.id} · ${p.regionNom} · ${this.libelleStatutPlan(p.statut)} (${p.periodeLibelle})`,
           value: p.id
         }));
         this.selectedPlanId = filtered.length > 0 ? filtered[0].id : null;
       }
     });
+  }
+
+  /** Plans proposés dans la liste (pour identifier le plan affiché). */
+  plansListe: PlanReattribution[] = [];
+
+  /** Plan dont le tableau de bord est affiché : région, programme, validation. */
+  get planAffiche(): PlanReattribution | null {
+    return this.plansListe.find(p => p.id === this.charge.planId)
+      ?? (this.planDetails?.id === this.charge.planId ? this.planDetails : null);
+  }
+
+  libelleStatutPlan(statut: string): string {
+    const m: Record<string, string> = {
+      BROUILLON: 'Brouillon', VALIDE: 'Validé', EN_COURS: 'En cours', EXECUTE: 'Exécuté', PARTIEL: 'Partiellement exécuté', CLOTURE: 'Clôturé', ANNULE: 'Annulé'
+    };
+    return m[statut] ?? statut;
   }
 
   /** Base du calcul « après » choisie par l'utilisateur (null : défaut selon le statut du plan). */
@@ -1165,7 +1207,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           tooltip: { callbacks: {
             title: (it: any[]) => {
               const l = lignes[it[0].dataIndex];
-              return `${l.p.produitNom} — ${l.moment === 'avant' ? 'avant' : 'après'} le plan`;
+              return `${l.p.produitNom}, ${l.moment === 'avant' ? 'avant' : 'après'} le plan`;
             },
             label: (c: any) => {
               const l = lignes[c.dataIndex];
