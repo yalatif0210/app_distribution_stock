@@ -18,11 +18,12 @@ import { StockService } from '../../../core/services/stock.service';
 import { ReferentielService } from '../../../core/services/referentiel.service';
 import { PeriodeService } from '../../../core/services/periode.service';
 import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../core/models/models';
+import { Pagination, PaginationComponent } from '../../../shared/pagination';
 
 @Component({
   selector: 'app-import',
   standalone: true,
-  imports: [
+  imports: [PaginationComponent, 
     CommonModule, DatePipe, FormsModule, RouterLink,
     MatCardModule, MatFormFieldModule, MatSelectModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTableModule, MatPaginatorModule, MatSortModule,
@@ -134,7 +135,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let e of erreurs" style="border-bottom:1px solid rgba(220,38,38,.1);">
+              <tr *ngFor="let e of pgErreurs.page(erreurs)" style="border-bottom:1px solid rgba(220,38,38,.1);">
                 <td style="padding:.4rem .75rem;font-family:monospace;font-weight:600;">{{ e.numLigne }}</td>
                 <td style="padding:.4rem .75rem;"><code style="color:var(--accent-color);">{{ e.produitCode || '-' }}</code></td>
                 <td style="padding:.4rem .75rem;color:#991b1b;">{{ e.regle }}</td>
@@ -143,6 +144,7 @@ import { LigneErreur, SaisieStock, Programme, PeriodeSaisie } from '../../../cor
             </tbody>
           </table>
         </div>
+        <app-pagination [p]="pgErreurs" [total]="erreurs.length"></app-pagination>
 
         <div style="margin-top:.875rem;">
           <button mat-stroked-button color="warn" (click)="telechargerRapportErreurs()">
@@ -215,6 +217,9 @@ export class ImportComponent implements OnInit, AfterViewInit {
   fichier: File | null = null;
   dsPreview = new MatTableDataSource<SaisieStock>([]);
   erreurs: LigneErreur[] = [];
+  // Pagination des tableaux
+  pgErreurs = new Pagination();
+
   loading = false;
   downloadingTemplate = false;
 
@@ -279,6 +284,7 @@ export class ImportComponent implements OnInit, AfterViewInit {
         this.loading = false;
         if (!resultat.success) {
           this.erreurs = resultat.erreurs;
+          this.pgErreurs.premiere();
           this.snackBar.open(
             `Import rejeté : ${resultat.erreurs.length} erreur(s) détectée(s). Aucune ligne importée.`,
             'Fermer', { duration: 6000 }

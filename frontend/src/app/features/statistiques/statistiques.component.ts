@@ -11,6 +11,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ReferentielService } from '../../core/services/referentiel.service';
 import { FiltreStatistiques, Statistiques, StatistiquesService } from '../../core/services/statistiques.service';
 import { Delais, Programme, Region } from '../../core/models/models';
+import { Pagination, PaginationComponent } from '../../shared/pagination';
 
 /**
  * Statistiques des plans de redéploiement validés sur une plage de dates (date de validation),
@@ -19,7 +20,7 @@ import { Delais, Programme, Region } from '../../core/models/models';
 @Component({
   selector: 'app-statistiques',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
+  imports: [PaginationComponent, CommonModule, FormsModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
             MatSnackBarModule, MatTooltipModule],
   styles: [`
     .filtres { display:flex; flex-wrap:wrap; gap:.75rem 1rem; align-items:flex-end; padding:1rem;
@@ -144,37 +145,40 @@ import { Delais, Programme, Region } from '../../core/models/models';
           <h3>Par région</h3>
           <div class="defile"><table>
             <thead><tr><th>Région</th><th class="num">Plans</th><th class="num">Mouvements</th><th class="num">Exécution mouvements</th><th class="num">Exécution quantités</th><th class="num">Ruptures résorbées</th></tr></thead>
-            <tbody><tr *ngFor="let g of s.parRegion">
+            <tbody><tr *ngFor="let g of pgRegion.page(s.parRegion)">
               <td>{{ g.libelle }}</td><td class="num">{{ g.nbPlans }}</td><td class="num">{{ g.nbMouvements }}</td>
               <td class="num">{{ g.tauxExecutionMouvements | number:'1.0-1' }} %</td><td class="num">{{ g.tauxExecutionQuantites | number:'1.0-1' }} %</td>
               <td class="num">{{ g.nbRupturesResorbees }}</td>
             </tr></tbody>
           </table></div>
+          <app-pagination [p]="pgRegion" [total]="s.parRegion.length"></app-pagination>
         </div>
 
         <div class="bloc">
           <h3>Par programme</h3>
           <div class="defile"><table>
             <thead><tr><th>Programme</th><th class="num">Plans</th><th class="num">Mouvements</th><th class="num">Exécution mouvements</th><th class="num">Exécution quantités</th><th class="num">Ruptures résorbées</th></tr></thead>
-            <tbody><tr *ngFor="let g of s.parProgramme">
+            <tbody><tr *ngFor="let g of pgProgramme.page(s.parProgramme)">
               <td>{{ g.libelle }}</td><td class="num">{{ g.nbPlans }}</td><td class="num">{{ g.nbMouvements }}</td>
               <td class="num">{{ g.tauxExecutionMouvements | number:'1.0-1' }} %</td><td class="num">{{ g.tauxExecutionQuantites | number:'1.0-1' }} %</td>
               <td class="num">{{ g.nbRupturesResorbees }}</td>
             </tr></tbody>
           </table></div>
+          <app-pagination [p]="pgProgramme" [total]="s.parProgramme.length"></app-pagination>
         </div>
 
         <div class="bloc">
           <h3>Quantités redistribuées par produit</h3>
           <div class="defile"><table>
             <thead><tr><th>Programme</th><th>Produit</th><th>Unité</th><th class="num">Mouvements</th><th class="num">Prévu</th><th class="num">Exécuté</th><th class="num">Exécution</th></tr></thead>
-            <tbody><tr *ngFor="let p of s.parProduit">
+            <tbody><tr *ngFor="let p of pgProduit.page(s.parProduit)">
               <td>{{ p.programme }}</td><td><strong>{{ p.nom }}</strong> <span style="color:var(--text-secondary);font-size:.75rem;">{{ p.code }}</span></td>
               <td>{{ p.unite }}</td><td class="num">{{ p.nbMouvements }}</td>
               <td class="num">{{ p.quantitePrevue | number:'1.0-1' }}</td><td class="num">{{ p.quantiteExecutee | number:'1.0-1' }}</td>
               <td class="num">{{ p.tauxExecutionQuantites | number:'1.0-1' }} %</td>
             </tr></tbody>
           </table></div>
+          <app-pagination [p]="pgProduit" [total]="s.parProduit.length"></app-pagination>
         </div>
 
         <div class="deux">
@@ -182,21 +186,23 @@ import { Delais, Programme, Region } from '../../core/models/models';
             <h3>Sites expéditeurs les plus sollicités</h3>
             <div class="defile"><table>
               <thead><tr><th>Site</th><th *ngIf="s.parRegion.length > 1">Région</th><th class="num">Mouvements</th><th class="num">Exécutés</th><th class="num">Produits</th></tr></thead>
-              <tbody><tr *ngFor="let x of s.sitesSources">
+              <tbody><tr *ngFor="let x of pgSources.page(s.sitesSources)">
                 <td>{{ x.nom }}</td><td *ngIf="s.parRegion.length > 1">{{ x.region }}</td><td class="num">{{ x.nbMouvements }}</td>
                 <td class="num">{{ x.nbExecutesAuMoinsEnPartie }}</td><td class="num">{{ x.nbProduits }}</td>
               </tr></tbody>
             </table></div>
+            <app-pagination [p]="pgSources" [total]="s.sitesSources.length"></app-pagination>
           </div>
           <div class="bloc">
             <h3>Sites destinataires les plus servis</h3>
             <div class="defile"><table>
               <thead><tr><th>Site</th><th *ngIf="s.parRegion.length > 1">Région</th><th class="num">Mouvements</th><th class="num">Exécutés</th><th class="num">Ruptures résorbées</th></tr></thead>
-              <tbody><tr *ngFor="let x of s.sitesCibles">
+              <tbody><tr *ngFor="let x of pgCibles.page(s.sitesCibles)">
                 <td>{{ x.nom }}</td><td *ngIf="s.parRegion.length > 1">{{ x.region }}</td><td class="num">{{ x.nbMouvements }}</td>
                 <td class="num">{{ x.nbExecutesAuMoinsEnPartie }}</td><td class="num">{{ x.nbRupturesResorbees }}</td>
               </tr></tbody>
             </table></div>
+            <app-pagination [p]="pgCibles" [total]="s.sitesCibles.length"></app-pagination>
           </div>
         </div>
       </ng-container>
@@ -250,7 +256,7 @@ import { Delais, Programme, Region } from '../../core/models/models';
             <th class="num">Quantités reçues</th><th class="num">Écarts déclarés</th>
           </tr></thead>
           <tbody>
-            <tr *ngFor="let r of d.regions">
+            <tr *ngFor="let r of pgDelais.page(d.regions)">
               <td style="white-space:nowrap;">{{ r.region }}</td>
               <ng-container *ngTemplateOutlet="cellulesDelais; context: { $implicit: r }"></ng-container>
             </tr>
@@ -260,6 +266,7 @@ import { Delais, Programme, Region } from '../../core/models/models';
             </tr>
           </tbody>
         </table></div>
+        <app-pagination [p]="pgDelais" [total]="d.regions.length"></app-pagination>
       </div>
 
       <div class="deux" *ngIf="aDesDelais">
@@ -303,6 +310,14 @@ export class StatistiquesComponent implements OnInit, OnDestroy {
   programmes: Programme[] = [];
 
   stats: Statistiques | null = null;
+  // Pagination des tableaux
+  pgRegion = new Pagination();
+  pgProgramme = new Pagination();
+  pgProduit = new Pagination();
+  pgSources = new Pagination();
+  pgCibles = new Pagination();
+  pgDelais = new Pagination();
+
   chargement = false;
   export: 'excel' | 'pdf' | null = null;
   private graphe: Chart | null = null;
@@ -344,7 +359,7 @@ export class StatistiquesComponent implements OnInit, OnDestroy {
   calculerDelais(): void {
     if (!this.anneeDelais) return;
     this.service.delais(this.anneeDelais, this.programmeDelais).subscribe({
-      next: d => { this.delais = d; setTimeout(() => this.dessinerDelais(), 50); },
+      next: d => { this.delais = d; this.pgDelais.premiere(); setTimeout(() => this.dessinerDelais(), 50); },
       error: err => this.snackBar.open(err.error?.message || 'Calcul des délais impossible.', 'Fermer', { duration: 5000 })
     });
   }
@@ -412,6 +427,7 @@ export class StatistiquesComponent implements OnInit, OnDestroy {
     this.service.calculer(this.filtre).subscribe({
       next: s => {
         this.stats = s;
+        [this.pgRegion, this.pgProgramme, this.pgProduit, this.pgSources, this.pgCibles].forEach(p => p.premiere());
         this.chargement = false;
         setTimeout(() => this.dessiner(), 50);
       },

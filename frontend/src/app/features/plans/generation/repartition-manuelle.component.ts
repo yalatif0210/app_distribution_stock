@@ -8,6 +8,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Observable } from 'rxjs';
 import { PlanService } from '../../../core/services/plan.service';
 import { AnalyseProduit, LignePlan, PlanReattribution, StructureAnalyse } from '../../../core/models/models';
+import { Pagination, PaginationComponent } from '../../../shared/pagination';
 
 /** Une ligne de saisie : une cible, une quantité, une source. Plusieurs lignes possibles par cible. */
 interface Ligne {
@@ -35,7 +36,7 @@ interface Ligne {
 @Component({
   selector: 'app-repartition-manuelle',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule,
+  imports: [PaginationComponent, CommonModule, FormsModule, MatButtonModule,
             MatIconModule, MatTooltipModule, MatProgressSpinnerModule],
   styles: [`
     .barre { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem 1.25rem; padding:.875rem 1rem;
@@ -121,7 +122,7 @@ interface Ligne {
             <tr><th>Site</th><th class="num">MSD</th><th class="num">Besoin</th><th class="num">Quantité</th><th>Source</th><th></th></tr>
           </thead>
           <tbody>
-            <ng-container *ngFor="let c of cibles">
+            <ng-container *ngFor="let c of pgCibles.page(cibles)">
               <tr *ngFor="let l of lignesDe(c.structureId)" [class.sous-ligne]="!l.principale">
                 <td>
                   <ng-container *ngIf="l.principale">
@@ -178,6 +179,7 @@ interface Ligne {
           </tbody>
         </table>
       </div>
+      <app-pagination [p]="pgCibles" [total]="cibles.length"></app-pagination>
 
       <!-- ── Sources ── -->
       <div class="encart sources">
@@ -187,7 +189,7 @@ interface Ligne {
             <tr><th>Site</th><th class="num">Cessible</th><th class="num">Reste</th><th>Péremption</th></tr>
           </thead>
           <tbody>
-            <tr *ngFor="let s of sources" [class.epuisee]="reste(s.structureId) <= 0">
+            <tr *ngFor="let s of pgSources.page(sources)" [class.epuisee]="reste(s.structureId) <= 0">
               <td>
                 <div class="site">{{ s.structureNom }}</div>
                 <div class="sous">
@@ -203,6 +205,7 @@ interface Ligne {
             </tr>
           </tbody>
         </table>
+        <app-pagination [p]="pgSources" [total]="sources.length"></app-pagination>
         <div *ngIf="sources.length === 0" class="vide">
           <mat-icon style="display:block;margin:0 auto .4rem;">inventory_2</mat-icon>
           Aucune source possible pour ce produit.
@@ -225,6 +228,10 @@ export class RepartitionManuelleComponent implements OnChanges, OnDestroy {
 
   private planService = inject(PlanService);
   produitId: number | null = null;
+  // Pagination des tableaux
+  pgCibles = new Pagination();
+  pgSources = new Pagination();
+
   private lignesParProduit = new Map<number, Ligne[]>();
   private compteur = 0;
   private static readonly DELAI_MS = 700;

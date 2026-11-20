@@ -7,6 +7,7 @@ import { AnalyseBlocComponent } from './analyse-bloc.component';
 import {
   Analyses, AnalysesService, Boite, Cellule, DispersionProduit, Flux, Interpretation
 } from '../../core/services/analyses.service';
+import { Pagination, PaginationComponent } from '../../shared/pagination';
 
 /** Nœud et lien du diagramme des flux entre districts. */
 interface NoeudFlux { nom: string; total: number; y: number; h: number; couleur: string; }
@@ -30,7 +31,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
 @Component({
   selector: 'app-analyses-onglet',
   standalone: true,
-  imports: [CommonModule, MatIconModule, MatTooltipModule, MatProgressSpinnerModule, AnalyseBlocComponent],
+  imports: [PaginationComponent, CommonModule, MatIconModule, MatTooltipModule, MatProgressSpinnerModule, AnalyseBlocComponent],
   styles: [`
     .bascule { display:inline-flex; border:1px solid var(--border-color); border-radius:.4rem; overflow:hidden; margin-bottom:.75rem; }
     .bascule button { border:none; background:transparent; padding:.3rem .8rem; font:inherit; font-size:.8rem; cursor:pointer; color:var(--text-primary); }
@@ -106,7 +107,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let s of a.matrice.sites">
+              <tr *ngFor="let s of pgMatrice.page(a.matrice.sites)">
                 <th class="site" [matTooltip]="s.nom">{{ s.nom }}</th>
                 <ng-container *ngFor="let p of a.matrice.produits">
                   <ng-container *ngIf="cellule(s.id, p.id) as c; else caseVide">
@@ -123,6 +124,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
             </tbody>
           </table>
         </div>
+        <app-pagination [p]="pgMatrice" [total]="a.matrice.sites.length"></app-pagination>
       </app-analyse-bloc>
 
       <!-- 2. Dispersion -->
@@ -143,7 +145,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
             <span>Échelle : 0 à {{ echelleMsd | number:'1.0-0' }} mois de stock{{ echelleTronquee ? ' (valeurs supérieures ramenées au bord)' : '' }}</span>
           </div>
           <div class="defile" style="max-height:520px;">
-            <div class="boite-ligne" *ngFor="let p of a.dispersion.produits">
+            <div class="boite-ligne" *ngFor="let p of pgDispersion.page(a.dispersion.produits)">
               <div class="nom" [matTooltip]="p.produit + ' : ' + p.nbSites + ' sites'">{{ p.produit }}</div>
               <svg viewBox="0 0 600 40" style="width:100%;height:auto;display:block;" role="img"
                    [attr.aria-label]="'Dispersion des MSD de ' + p.produit">
@@ -176,6 +178,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
             </svg>
             <div></div>
           </div>
+          <app-pagination [p]="pgDispersion" [total]="a.dispersion.produits.length"></app-pagination>
         </ng-container>
       </app-analyse-bloc>
 
@@ -196,7 +199,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
               <table class="liste">
                 <thead><tr><th>Site source</th><th>Produit</th><th class="num">Quantité</th><th>Péremption</th></tr></thead>
                 <tbody>
-                  <tr *ngFor="let l of a.peremptions.evitees">
+                  <tr *ngFor="let l of pgEvitees.page(a.peremptions.evitees)">
                     <td>{{ l.site }}</td><td>{{ l.produit }}</td>
                     <td class="num">{{ l.quantite | number:'1.0-0' }} <span style="color:var(--text-secondary);">{{ l.unite }}</span></td>
                     <td>{{ l.datePeremption | date:'dd/MM/yyyy' }}</td>
@@ -204,6 +207,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
                 </tbody>
               </table>
             </div>
+            <app-pagination [p]="pgEvitees" [total]="a.peremptions.evitees.length"></app-pagination>
           </div>
           <div>
             <div class="sous-titre" style="color:#b91c1c;">Encore à risque après le plan ({{ a.peremptions.aRisque.length }})</div>
@@ -212,7 +216,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
               <table class="liste">
                 <thead><tr><th>Site</th><th>Produit</th><th class="num">Quantité</th><th>Péremption</th></tr></thead>
                 <tbody>
-                  <tr *ngFor="let l of a.peremptions.aRisque">
+                  <tr *ngFor="let l of pgRisque.page(a.peremptions.aRisque)">
                     <td>{{ l.site }}</td><td>{{ l.produit }}</td>
                     <td class="num">{{ l.quantite | number:'1.0-0' }} <span style="color:var(--text-secondary);">{{ l.unite }}</span></td>
                     <td [style.color]="joursAvant(l.datePeremption) < 90 ? '#b91c1c' : null">{{ l.datePeremption | date:'dd/MM/yyyy' }}</td>
@@ -220,6 +224,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
                 </tbody>
               </table>
             </div>
+            <app-pagination [p]="pgRisque" [total]="a.peremptions.aRisque.length"></app-pagination>
           </div>
         </div>
       </app-analyse-bloc>
@@ -242,7 +247,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
           <table class="liste">
             <thead><tr><th>Site</th><th>Produit</th><th>Jours restants</th><th>Date estimée</th></tr></thead>
             <tbody>
-              <tr *ngFor="let r of a.alerte.restantes">
+              <tr *ngFor="let r of pgAlerte.page(a.alerte.restantes)">
                 <td>{{ r.site }}</td><td>{{ r.produit }}</td>
                 <td>
                   <span class="barre-fond"><span class="barre" style="display:block;"
@@ -255,6 +260,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
             </tbody>
           </table>
         </div>
+        <app-pagination [p]="pgAlerte" [total]="a.alerte.restantes.length"></app-pagination>
       </app-analyse-bloc>
 
       <!-- 5. Chroniques -->
@@ -275,7 +281,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
               <table class="liste">
                 <thead><tr><th>Site</th><th>Produit</th><th>Périodes en rupture</th></tr></thead>
                 <tbody>
-                  <tr *ngFor="let c of a.chroniques.ruptures">
+                  <tr *ngFor="let c of pgChroRuptures.page(a.chroniques.ruptures)">
                     <td>{{ c.site }}</td><td>{{ c.produit }}</td>
                     <td [matTooltip]="c.nbFois + ' période(s) sur ' + a.chroniques.periodesAnalysees">
                       <span class="points"><span style="color:#ef4444;">{{ points(c.nbFois) }}</span><span style="color:#cbd5e1;">{{ points(a.chroniques.periodesAnalysees - c.nbFois) }}</span></span>
@@ -284,6 +290,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
                 </tbody>
               </table>
             </div>
+            <app-pagination [p]="pgChroRuptures" [total]="a.chroniques.ruptures.length"></app-pagination>
           </div>
           <div>
             <div class="sous-titre">Surstocks récurrents ({{ a.chroniques.surstocks.length }})</div>
@@ -292,7 +299,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
               <table class="liste">
                 <thead><tr><th>Produit</th><th>Sites en surstock chronique</th></tr></thead>
                 <tbody>
-                  <tr *ngFor="let s of a.chroniques.surstocks">
+                  <tr *ngFor="let s of pgChroSurstocks.page(a.chroniques.surstocks)">
                     <td>{{ s.produit }}</td>
                     <td>
                       <span class="barre-fond"><span class="barre" style="display:block;background:#a855f7;" [style.width.%]="pourcent(s.nbSites, s.nbSitesSuivis)"></span></span>
@@ -302,6 +309,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
                 </tbody>
               </table>
             </div>
+            <app-pagination [p]="pgChroSurstocks" [total]="a.chroniques.surstocks.length"></app-pagination>
           </div>
         </div>
       </app-analyse-bloc>
@@ -320,7 +328,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
           <table class="liste">
             <thead><tr><th>Site source</th><th class="num">Mouvements</th><th>Taux de livraison</th><th class="num">En retard</th><th class="num">Délai moyen</th><th>Verdict</th></tr></thead>
             <tbody>
-              <tr *ngFor="let s of a.fiabilite.sites">
+              <tr *ngFor="let s of pgFiabilite.page(a.fiabilite.sites)">
                 <td>{{ s.site }}</td>
                 <td class="num">{{ s.nbMouvements }}</td>
                 <td>
@@ -334,6 +342,7 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
             </tbody>
           </table>
         </div>
+        <app-pagination [p]="pgFiabilite" [total]="a.fiabilite.sites.length"></app-pagination>
       </app-analyse-bloc>
 
       <!-- Flux entre districts -->
@@ -373,6 +382,16 @@ export class AnalysesOngletComponent implements OnChanges {
   chargement = false;
   erreur = '';
   momentCarte: 'avant' | 'apres' = 'apres';
+  // Pagination des tableaux
+  pgMatrice = new Pagination(25);
+  pgDispersion = new Pagination();
+  pgEvitees = new Pagination();
+  pgRisque = new Pagination();
+  pgAlerte = new Pagination();
+  pgChroRuptures = new Pagination();
+  pgChroSurstocks = new Pagination();
+  pgFiabilite = new Pagination();
+
   readonly statuts = Object.values(COULEURS_STATUT);
 
   echelleMsd = 6;
@@ -390,7 +409,7 @@ export class AnalysesOngletComponent implements OnChanges {
     this.chargement = true;
     this.erreur = '';
     this.service.analyses(this.periodeId, this.programmeId, this.planId, this.base).subscribe({
-      next: (a) => { this.preparer(a); this.a = a; this.chargement = false; },
+      next: (a) => { this.preparer(a); [this.pgMatrice, this.pgDispersion, this.pgEvitees, this.pgRisque, this.pgAlerte, this.pgChroRuptures, this.pgChroSurstocks, this.pgFiabilite].forEach(p => p.premiere()); this.a = a; this.chargement = false; },
       error: (e) => {
         this.chargement = false;
         this.a = null;

@@ -11,11 +11,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { StockService } from '../../../core/services/stock.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Programme, ProduitSelection } from '../../../core/models/models';
+import { Pagination, PaginationComponent } from '../../../shared/pagination';
 
 @Component({
   selector: 'app-selection-produits',
   standalone: true,
-  imports: [
+  imports: [PaginationComponent, 
     CommonModule, FormsModule,
     MatCardModule, MatFormFieldModule, MatSelectModule,
     MatCheckboxModule, MatProgressSpinnerModule, MatSnackBarModule, MatIconModule
@@ -77,7 +78,7 @@ import { Programme, ProduitSelection } from '../../../core/models/models';
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let p of produits"
+            <tr *ngFor="let p of pgProduits.page(produits)"
               style="border-bottom:1px solid var(--border-color);"
               [style.background]="p.actif ? 'rgba(22,163,74,.03)' : 'transparent'">
 
@@ -113,6 +114,7 @@ import { Programme, ProduitSelection } from '../../../core/models/models';
             </tr>
           </tbody>
         </table>
+        <app-pagination [p]="pgProduits" [total]="produits.length"></app-pagination>
       </mat-card-content>
     </mat-card>
   `
@@ -121,6 +123,9 @@ export class SelectionProduitsComponent implements OnInit {
   programmes: Programme[] = [];
   selectedProgrammeId: number | null = null;
   produits: ProduitSelection[] = [];
+  // Pagination des tableaux
+  pgProduits = new Pagination(25);
+
   loadingProgrammes = false;
   loadingProduits = false;
   toggling = new Set<number>();
@@ -150,6 +155,7 @@ export class SelectionProduitsComponent implements OnInit {
 
   onProgrammeChange(programmeId: number | null): void {
     this.produits = [];
+    this.pgProduits.premiere();
     if (programmeId) this.loadProduits();
   }
 

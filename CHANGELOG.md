@@ -4,6 +4,15 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.4.1] - 2026-11-20
+
+### Modifié
+- Pagination sur tous les tableaux susceptibles de compter beaucoup de lignes : Statistiques
+  (par région, programme, produit, sites, délais), onglet Synthèses (carte des statuts,
+  dispersion, péremptions, alertes, chroniques, fiabilité), répartition manuelle, sélection
+  des produits, détail d'un état de stock, erreurs d'import.
+- Paginateurs en français dans toute l'application (« Lignes par page », « 1 – 10 sur 23 »).
+
 ## [1.4.0] - 2026-11-20
 
 ### Modifié

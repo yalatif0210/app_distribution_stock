@@ -22,11 +22,12 @@ import { PeriodeService } from '../../../core/services/periode.service';
 import { ReferentielService } from '../../../core/services/referentiel.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '../../../core/models/models';
+import { Pagination, PaginationComponent } from '../../../shared/pagination';
 
 @Component({
   selector: 'app-etats',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule, MatCardModule, MatFormFieldModule, MatInputModule,
+  imports: [PaginationComponent, CommonModule, DatePipe, FormsModule, MatCardModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatTableModule, MatPaginatorModule, MatSortModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatTooltipModule, MatDividerModule],
   template: `
@@ -216,7 +217,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let ligne of detailData.lignes"
+            <tr *ngFor="let ligne of pgDetail.page(detailData.lignes)"
               style="border-bottom:1px solid var(--border-color);"
               [style.opacity]="ligne.saved ? '1' : '0.5'">
               <td style="padding:.5rem 1rem;">
@@ -251,6 +252,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
             </tr>
           </tbody>
         </table>
+        <app-pagination *ngIf="detailData" [p]="pgDetail" [total]="detailData.lignes.length"></app-pagination>
       </mat-card-content>
     </mat-card>
 
@@ -282,6 +284,9 @@ export class EtatsComponent implements OnInit {
   selectedEtat: EtatStockSummary | null = null;
   detailData: EtatStock | null = null;
   loadingDetail = false;
+  // Pagination des tableaux
+  pgDetail = new Pagination();
+
 
   // Le tableau n'existe qu'une fois des résultats chargés : pagination et tri sont branchés à son apparition
   @ViewChild(MatPaginator) set paginator(p: MatPaginator | undefined) { if (p) this.dsEtats.paginator = p; }
@@ -389,6 +394,7 @@ export class EtatsComponent implements OnInit {
   toggleDetail(etat: EtatStockSummary): void {
     if (this.selectedEtat?.id === etat.id) { this.closeDetail(); return; }
     this.selectedEtat = etat;
+    this.pgDetail.premiere();
     this.detailData = null;
     this.loadingDetail = true;
     this.stockService.getEtat(etat.periodeId, etat.programmeId, etat.structureId).subscribe({
