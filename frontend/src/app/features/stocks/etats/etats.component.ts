@@ -1,4 +1,4 @@
-import { Component, OnInit, AfterViewInit, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { SeuilsStatutService } from '../../../core/services/seuils-statut.service';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -39,7 +39,25 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
     <mat-card style="margin-bottom:1.25rem;">
       <mat-card-content style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;padding-top:.5rem;">
 
-        <mat-form-field appearance="fill" style="flex:1;min-width:200px;">
+        <!-- Admin / superviseur : d'abord la région, puis les dates RAS de cette région -->
+        <mat-form-field *ngIf="multiRegions" appearance="fill" style="flex:1;min-width:200px;">
+          <mat-label>Région</mat-label>
+          <mat-select [(ngModel)]="selectedRegionId" (selectionChange)="majDatesRas()">
+            <mat-option [value]="null">{{ auth.isAdmin() ? 'Toutes les régions' : 'Toutes mes régions' }}</mat-option>
+            <mat-option *ngFor="let r of regions" [value]="r.id">{{ r.nom }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field *ngIf="multiRegions" appearance="fill" style="flex:1;min-width:200px;">
+          <mat-label>Date RAS *</mat-label>
+          <mat-select [(ngModel)]="selectedDateRas" [disabled]="!datesRas.length">
+            <mat-option *ngFor="let d of datesRas" [value]="d.dateRas">{{ d.label }}</mat-option>
+          </mat-select>
+          <mat-hint *ngIf="!datesRas.length">Aucune date RAS pour cette région</mat-hint>
+          <mat-hint *ngIf="datesRas.length && selectedRegionId">{{ datesRas.length }} date(s) RAS dans cette région</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field *ngIf="!multiRegions" appearance="fill" style="flex:1;min-width:200px;">
           <mat-label>Période *</mat-label>
           <mat-select [(ngModel)]="selectedPeriodeId">
             <mat-option [value]="null">-- Choisir --</mat-option>
@@ -55,15 +73,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field *ngIf="auth.isAdmin() || auth.isSuperviseur()" appearance="fill" style="flex:1;min-width:200px;">
-          <mat-label>Région</mat-label>
-          <mat-select [(ngModel)]="selectedRegionId">
-            <mat-option [value]="null">{{ auth.isAdmin() ? 'Toutes les régions' : 'Toutes mes régions' }}</mat-option>
-            <mat-option *ngFor="let r of regions" [value]="r.id">{{ r.nom }}</mat-option>
-          </mat-select>
-        </mat-form-field>
-
-        <button mat-raised-button color="primary" [disabled]="!selectedPeriodeId || loading" (click)="rechercher()" style="height:56px;padding:0 1.5rem;">
+        <button mat-raised-button color="primary" [disabled]="!(multiRegions ? selectedDateRas : selectedPeriodeId) || loading" (click)="rechercher()" style="height:56px;padding:0 1.5rem;">
           <mat-spinner *ngIf="loading" diameter="18" style="display:inline-block;margin-right:.4rem;"></mat-spinner>
           <mat-icon *ngIf="!loading">search</mat-icon> Rechercher
         </button>
@@ -83,6 +93,11 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
         </div>
 
         <table mat-table [dataSource]="dsEtats" matSort style="width:100%;">
+
+          <ng-container matColumnDef="region">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header="regionNom">Région</th>
+            <td mat-cell *matCellDef="let e" style="font-size:.85rem;">{{ e.regionNom }}</td>
+          </ng-container>
 
           <ng-container matColumnDef="structure">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>Structure</th>
@@ -180,16 +195,13 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
 
       <mat-card-content style="padding:0;">
 
-        <div *ngIf="loadingDetail" style="text-align:center;padding:2rem;">
-          <mat-spinner diameter="32"></mat-spinner>
-        </div>
 
         <div *ngIf="!loadingDetail && detailData && detailData.lignes.length === 0"
           style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:.875rem;">
           Aucun produit configuré pour cette structure sur ce programme.
         </div>
 
-        <table *ngIf="!loadingDetail && detailData && detailData.lignes.length > 0"
+        <table *ngIf="detailData && detailData.lignes.length > 0"
           style="width:100%;border-collapse:collapse;min-width:700px;">
           <thead>
             <tr style="background:#f8fafc;border-bottom:2px solid var(--border-color);">
@@ -248,7 +260,7 @@ import { EtatStock, EtatStockSummary, PeriodeSaisie, Programme, Region } from '.
     </div>
   `
 })
-export class EtatsComponent implements OnInit, AfterViewInit {
+export class EtatsComponent implements OnInit {
   seuilsStatut = inject(SeuilsStatutService);
   periodes: PeriodeSaisie[] = [];
   programmes: Programme[] = [];
@@ -261,14 +273,19 @@ export class EtatsComponent implements OnInit, AfterViewInit {
 
   loading = false;
   searched = false;
-  colonnes = ['structure', 'programme', 'statut', 'lignes', 'dateCreation', 'dateSoumission', 'actions'];
+  private readonly colonnesBase = ['structure', 'programme', 'statut', 'lignes', 'dateCreation', 'dateSoumission', 'actions'];
+  /** La colonne Région n'a de sens que pour qui voit plusieurs régions. */
+  get colonnes(): string[] {
+    return this.multiRegions ? ['region', ...this.colonnesBase] : this.colonnesBase;
+  }
 
   selectedEtat: EtatStockSummary | null = null;
   detailData: EtatStock | null = null;
   loadingDetail = false;
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort!: MatSort;
+  // Le tableau n'existe qu'une fois des résultats chargés : pagination et tri sont branchés à son apparition
+  @ViewChild(MatPaginator) set paginator(p: MatPaginator | undefined) { if (p) this.dsEtats.paginator = p; }
+  @ViewChild(MatSort) set sort(s: MatSort | undefined) { if (s) this.dsEtats.sort = s; }
 
   private snackBar = inject(MatSnackBar);
 
@@ -279,24 +296,55 @@ export class EtatsComponent implements OnInit, AfterViewInit {
     private refService: ReferentielService
   ) {}
 
+  /** Admin et superviseur voient plusieurs régions : on choisit la région, puis la date RAS. */
+  get multiRegions(): boolean {
+    return this.auth.isAdmin() || this.auth.isSuperviseur();
+  }
+
+  /** Dates RAS proposées (admin / superviseur). */
+  datesRas: { dateRas: string; label: string }[] = [];
+  selectedDateRas: string | null = null;
+
   ngOnInit(): void {
-    const p$ = (this.auth.isAdmin() || this.auth.isSuperviseur())
+    const p$ = this.multiRegions
       ? this.periodeService.getAllPeriodes()
       : this.periodeService.findByRegion();
-    p$.subscribe(p => this.periodes = p);
+    p$.subscribe(p => { this.periodes = p; if (this.multiRegions) this.majDatesRas(); });
     this.refService.getProgrammesGeres().subscribe(p => this.programmes = p.filter((x: Programme) => x.active));
 
-    if (this.auth.isAdmin()) {
-      this.refService.getRegions().subscribe(r => this.regions = r);
-    } else if (this.auth.isSuperviseur()) {
+    if (this.multiRegions) {
       const supervisedIds = new Set(this.auth.supervisedRegionIds);
-      this.refService.getRegions().subscribe(r => this.regions = r.filter(x => supervisedIds.has(x.id)));
+      this.refService.getRegions().subscribe(r => {
+        this.regions = this.auth.isAdmin() ? r : r.filter(x => supervisedIds.has(x.id));
+        // Une seule région : on la choisit d'office
+        if (this.regions.length === 1) { this.selectedRegionId = this.regions[0].id; this.majDatesRas(); }
+      });
     }
   }
 
-  ngAfterViewInit(): void {
-    this.dsEtats.paginator = this.paginator;
-    this.dsEtats.sort = this.sort;
+  /**
+   * Dates RAS de la région choisie (avec leur statut), ou dates distinctes de toutes les
+   * régions. La date déjà choisie est gardée si elle existe encore.
+   */
+  majDatesRas(): void {
+    const statut = (s: string) => s === 'OUVERTE' ? 'ouverte' : (s === 'FERMEE' ? 'fermée' : s.toLowerCase());
+    const fmt = (p: PeriodeSaisie) => p.libelle ?? p.dateRas.split('-').reverse().join('/');
+    if (this.selectedRegionId) {
+      this.datesRas = this.periodes.filter(p => p.regionId === this.selectedRegionId)
+        .map(p => ({ dateRas: p.dateRas, label: `${fmt(p)} · ${statut(p.statut)}` }));
+    } else {
+      const vues = new Set<string>();
+      this.datesRas = [];
+      for (const p of this.periodes) {
+        if (vues.has(p.dateRas)) continue;
+        vues.add(p.dateRas);
+        const n = this.periodes.filter(x => x.dateRas === p.dateRas).length;
+        this.datesRas.push({ dateRas: p.dateRas, label: `${fmt(p)} · ${n} région(s)` });
+      }
+    }
+    if (!this.datesRas.some(d => d.dateRas === this.selectedDateRas)) {
+      this.selectedDateRas = this.datesRas[0]?.dateRas ?? null;
+    }
   }
 
   applyFilter(value: string): void {
@@ -305,27 +353,36 @@ export class EtatsComponent implements OnInit, AfterViewInit {
   }
 
   rechercher(): void {
+    if (this.multiRegions) { this.rechercherParDateRas(); return; }
     if (!this.selectedPeriodeId) return;
     this.loading = true;
     this.searched = true;
     this.closeDetail();
 
-    if (this.auth.isSuperviseur() && this.selectedRegionId === null) {
-      const ids = this.auth.supervisedRegionIds;
-      if (ids.length === 0) { this.dsEtats.data = []; this.loading = false; return; }
-      forkJoin(ids.map(rid =>
-        this.stockService.listEtats(this.selectedPeriodeId!, this.selectedProgrammeId, rid)
-          .pipe(catchError(() => of([])))
-      )).subscribe(results => {
-        this.dsEtats.data = (results as EtatStockSummary[][]).flat();
-        this.loading = false;
-      });
-      return;
-    }
-
     this.stockService.listEtats(this.selectedPeriodeId!, this.selectedProgrammeId, this.selectedRegionId).subscribe({
       next: data => { this.dsEtats.data = data; this.loading = false; },
       error: () => { this.snackBar.open('Erreur lors du chargement.', 'Fermer', { duration: 3000 }); this.loading = false; }
+    });
+  }
+
+  /** Admin / superviseur : la période de chaque région ciblée qui porte la date RAS choisie. */
+  private rechercherParDateRas(): void {
+    if (!this.selectedDateRas) return;
+    const regionIds = this.selectedRegionId ? [this.selectedRegionId] : this.regions.map(r => r.id);
+    const cibles = regionIds
+      .map(rid => this.periodes.find(p => p.regionId === rid && p.dateRas === this.selectedDateRas))
+      .filter((p): p is PeriodeSaisie => !!p);
+    this.searched = true;
+    this.closeDetail();
+    if (!cibles.length) { this.dsEtats.data = []; return; }
+    this.loading = true;
+    forkJoin(cibles.map(p =>
+      this.stockService.listEtats(p.id, this.selectedProgrammeId, p.regionId ?? null).pipe(catchError(() => of([])))
+    )).subscribe(results => {
+      // Le résumé d'un état ne porte pas sa région : on la reprend de la période interrogée
+      this.dsEtats.data = (results as EtatStockSummary[][]).flatMap((etats, i) =>
+        etats.map(e => ({ ...e, regionNom: cibles[i].regionNom ?? this.regions.find(r => r.id === cibles[i].regionId)?.nom ?? '' })));
+      this.loading = false;
     });
   }
 

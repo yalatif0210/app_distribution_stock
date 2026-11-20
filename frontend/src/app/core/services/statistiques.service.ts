@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { Delais } from '../models/models';
 
 export interface StatGroupe {
   libelle: string; nbPlans: number; nbMouvements: number; nbExecutesAuMoinsEnPartie: number;
@@ -41,6 +42,13 @@ export class StatistiquesService {
     if (f.regionId != null) p = p.set('regionId', f.regionId);
     if (f.programmeId != null) p = p.set('programmeId', f.programmeId);
     return p;
+  }
+
+  /** Délais d'exécution des plans validés dans l'année, comparés entre régions. */
+  delais(annee: number, programmeId: number | null): Observable<Delais> {
+    let p = new HttpParams().set('annee', annee);
+    if (programmeId) p = p.set('programmeId', programmeId);
+    return this.http.get<Delais>('/api/statistiques/delais', { params: p });
   }
 
   calculer(f: FiltreStatistiques): Observable<Statistiques> {

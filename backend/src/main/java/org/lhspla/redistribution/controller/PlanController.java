@@ -3,6 +3,8 @@ package org.lhspla.redistribution.controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.lhspla.redistribution.dto.request.ExecutionRequest;
+import org.lhspla.redistribution.dto.request.ReceptionRequest;
+import org.lhspla.redistribution.dto.response.ReceptionDTO;
 import org.lhspla.redistribution.dto.request.LignePlanRequest;
 import org.lhspla.redistribution.dto.request.PlanGenerationRequest;
 import org.lhspla.redistribution.dto.response.ExecutionProgressionDTO;
@@ -134,9 +136,28 @@ public class PlanController {
     public ResponseEntity<LignePlanDTO> executerLigne(
             @PathVariable Long id,
             @PathVariable Long ligneId,
-            @Valid @RequestBody ExecutionRequest req) {
+            @Valid @RequestBody ExecutionRequest req,
+            @AuthenticationPrincipal UserDetails user) {
         exigerPlan(id);
-        return ResponseEntity.ok(planService.executerLigne(id, ligneId, req));
+        return ResponseEntity.ok(planService.executerLigne(id, ligneId, req, user.getUsername()));
+    }
+
+    /** Réception confirmée par le site destinataire (le service vérifie qu'il s'agit bien de lui). */
+    @PostMapping("/{id}/lignes/{ligneId}/receptions")
+    @PreAuthorize("hasAnyRole('GESTIONNAIRE', 'PHARMACIEN_REGION', 'ADMIN')")
+    public ResponseEntity<LignePlanDTO> receptionner(
+            @PathVariable Long id,
+            @PathVariable Long ligneId,
+            @Valid @RequestBody ReceptionRequest req,
+            @AuthenticationPrincipal UserDetails user) {
+        exigerPlan(id);
+        return ResponseEntity.ok(planService.receptionner(id, ligneId, req, user.getUsername()));
+    }
+
+    @GetMapping("/{id}/lignes/{ligneId}/receptions")
+    public ResponseEntity<List<ReceptionDTO>> receptions(@PathVariable Long id, @PathVariable Long ligneId) {
+        exigerPlan(id);
+        return ResponseEntity.ok(planService.receptions(id, ligneId));
     }
 
     @GetMapping("/stock-source")

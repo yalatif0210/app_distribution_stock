@@ -1,6 +1,7 @@
 package org.lhspla.redistribution.service;
 
 import lombok.RequiredArgsConstructor;
+import org.lhspla.redistribution.dto.response.DelaisDTO;
 import org.lhspla.redistribution.dto.response.StatistiquesDTO;
 import org.lhspla.redistribution.entity.LignePlan;
 import org.lhspla.redistribution.entity.PlanReattribution;
@@ -101,9 +102,9 @@ public class StatistiquesService {
         s.setTauxExecutionMouvements(pct(s.getNbExecutes() + s.getNbPartiels(), s.getNbMouvements()));
         s.setTauxExecutionQuantites(pct(somme(mvts, Mvt::realise), somme(mvts, Mvt::prevu)));
         List<Double> delais = mvts.stream()
-                .filter(m -> m.execute() && m.ligne().getDateExecution() != null && m.plan().getDateValidation() != null)
+                .filter(m -> m.execute() && m.ligne().dateEffectiveReception() != null && m.plan().getDateValidation() != null)
                 .map(m -> (double) Math.max(0, ChronoUnit.DAYS.between(
-                        m.plan().getDateValidation().toLocalDate(), m.ligne().getDateExecution().toLocalDate())))
+                        m.plan().getDateValidation().toLocalDate(), m.ligne().dateEffectiveReception())))
                 .sorted().toList();
         if (!delais.isEmpty()) {
             s.setDelaiMoyenJours(arrondi(delais.stream().mapToDouble(Double::doubleValue).average().orElse(0)));
@@ -123,6 +124,116 @@ public class StatistiquesService {
         dto.setSitesSources(sites(mvts, true));
         dto.setSitesCibles(sites(mvts, false));
         return dto;
+    }
+
+    // ── Délais d'exécution sur l'année, comparés entre régions ──────────────────
+
+    /**
+     * Plans validés dans l'année (date de validation), région par région.
+     * Délai d'un plan : de sa validation à la dernière réception, une fois tous ses mouvements
+     * reçus (complets ou clos avec un écart). Délai d'un mouvement : de la validation du plan à
+     * sa réception complète.
+     *
+     * @param regionIds régions du périmètre (null : toutes) ; la ligne « ensemble » couvre
+     *                  toujours toutes les régions, comme référence.
+     */
+    public DelaisDTO delais(int annee, Set<Long> regionIds, Long programmeId) {
+        LocalDate debut = LocalDate.of(annee, 1, 1);
+        List<PlanReattribution> tous = planRepo.findValidesEntre(debut.atStartOfDay(), debut.plusYears(1).atStartOfDay()).stream()
+                .filter(p -> STATUTS_PLANS.contains(p.getStatut()) && p.getRegion() != null && p.getDateValidation() != null)
+                .filter(p -> programmeId == null || (p.getProgramme() != null && programmeId.equals(p.getProgramme().getId())))
+                .toList();
+        List<PlanReattribution> perimetre = tous.stream()
+                .filter(p -> regionIds == null || regionIds.contains(p.getRegion().getId())).toList();
+
+        DelaisDTO dto = new DelaisDTO();
+        dto.setAnnee(annee);
+        dto.setProgramme(programmeId == null ? "Tous les programmes"
+                : programmeRepo.findById(programmeId).map(pr -> pr.getNom()).orElse("Programme " + programmeId));
+
+        // Toutes les régions du périmètre apparaissent, même sans plan dans l'année
+        List<Region> regions = regionIds == null ? regionRepo.findAll() : regionRepo.findAllById(regionIds);
+        Map<Long, List<PlanReattribution>> parRegion = perimetre.stream().collect(Collectors.groupingBy(p -> p.getRegion().getId()));
+        dto.setRegions(regions.stream()
+                .map(r -> delaisRegion(r.getId(), r.getNom(), parRegion.getOrDefault(r.getId(), List.of())))
+                .sorted(Comparator.comparing(DelaisDTO.Region::getRegion)).toList());
+        dto.setEnsemble(delaisRegion(null, "Ensemble des régions", tous));
+
+        for (int m = 1; m <= 12; m++) {
+            int mois = m;
+            DelaisDTO.Mois dm = new DelaisDTO.Mois();
+            dm.setMois(mois);
+            for (DelaisDTO.Region r : dto.getRegions()) {
+                List<Double> d = parRegion.getOrDefault(r.getRegionId(), List.of()).stream()
+                        .filter(p -> p.getDateValidation().getMonthValue() == mois)
+                        .map(StatistiquesService::delaiPlan).filter(Objects::nonNull).toList();
+                if (!d.isEmpty()) dm.getDelaiMoyenParRegion().put(r.getRegion(), arrondi(moyenne(d)));
+            }
+            dto.getParMois().add(dm);
+        }
+        return dto;
+    }
+
+    private static DelaisDTO.Region delaisRegion(Long regionId, String nom, List<PlanReattribution> plans) {
+        DelaisDTO.Region r = new DelaisDTO.Region();
+        r.setRegionId(regionId);
+        r.setRegion(nom);
+        r.setNbPlans(plans.size());
+        List<Double> delaisPlans = new ArrayList<>(), delaisMvts = new ArrayList<>(), ages = new ArrayList<>();
+        double prevu = 0, recu = 0;
+        int ecarts = 0;
+        for (PlanReattribution p : plans) {
+            Double d = delaiPlan(p);
+            if (d != null) delaisPlans.add(d);
+            else ages.add((double) Math.max(0, ChronoUnit.DAYS.between(p.getDateValidation().toLocalDate(), LocalDate.now())));
+            for (LignePlan l : lignesActives(p)) {
+                prevu += valeur(l.getQuantiteProposee());
+                recu += valeur(l.getQuantiteExecutee());
+                if (l.getMotifEcart() != null) ecarts++;
+                if ("EXECUTE".equals(l.getStatut()) && l.dateEffectiveReception() != null) {
+                    delaisMvts.add((double) Math.max(0, ChronoUnit.DAYS.between(p.getDateValidation().toLocalDate(), l.dateEffectiveReception())));
+                }
+            }
+        }
+        r.setNbPlansExecutes(delaisPlans.size());
+        r.setNbPlansEnCours(ages.size());
+        if (!delaisPlans.isEmpty()) {
+            List<Double> t = delaisPlans.stream().sorted().toList();
+            r.setDelaiMoyenPlanJours(arrondi(moyenne(t)));
+            r.setDelaiMedianPlanJours(arrondi(mediane(t)));
+            r.setDelaiMinPlanJours(t.get(0));
+            r.setDelaiMaxPlanJours(t.get(t.size() - 1));
+        }
+        if (!delaisMvts.isEmpty()) r.setDelaiMoyenMouvementJours(arrondi(moyenne(delaisMvts)));
+        r.setNbMouvementsRecus(delaisMvts.size());
+        if (!ages.isEmpty()) r.setAgeMoyenEnCoursJours(arrondi(moyenne(ages)));
+        r.setTauxQuantitesRecues(pct(recu, prevu));
+        r.setNbReceptionsAvecEcart(ecarts);
+        return r;
+    }
+
+    /** Délai d'exécution d'un plan, ou null s'il n'est pas entièrement reçu. */
+    private static Double delaiPlan(PlanReattribution p) {
+        List<LignePlan> lignes = lignesActives(p);
+        if (lignes.isEmpty() || !lignes.stream().allMatch(l -> "EXECUTE".equals(l.getStatut()))) return null;
+        LocalDate derniere = lignes.stream().map(LignePlan::dateEffectiveReception).filter(Objects::nonNull)
+                .max(Comparator.naturalOrder()).orElse(null);
+        if (derniere == null) return null;
+        return (double) Math.max(0, ChronoUnit.DAYS.between(p.getDateValidation().toLocalDate(), derniere));
+    }
+
+    private static List<LignePlan> lignesActives(PlanReattribution p) {
+        return Optional.ofNullable(p.getLignes()).orElse(List.of()).stream()
+                .filter(l -> !"ANNULE".equals(l.getStatut())).toList();
+    }
+
+    private static double moyenne(List<Double> v) {
+        return v.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+    }
+
+    private static double mediane(List<Double> tries) {
+        int n = tries.size();
+        return n % 2 == 1 ? tries.get(n / 2) : (tries.get(n / 2 - 1) + tries.get(n / 2)) / 2;
     }
 
     private String libelleNiveau(Set<Long> regionIds) {

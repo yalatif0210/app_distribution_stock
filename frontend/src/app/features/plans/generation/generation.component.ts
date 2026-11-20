@@ -566,12 +566,8 @@ import {
       <!-- Formulaire de saisie manuelle (programme sélectionné uniquement) -->
       <ng-container *ngIf="programmeId">
 
-        <!-- Chargement analyse -->
-        <div *ngIf="loadingAnalyse" style="display:flex;align-items:center;gap:.75rem;padding:1rem;color:var(--text-secondary);">
-          <mat-spinner diameter="24"></mat-spinner> Chargement de l'analyse des stocks…
-        </div>
 
-        <ng-container *ngIf="!loadingAnalyse && analyse">
+        <ng-container *ngIf="analyse">
 
           <!-- Diagnostic produits sans source éligible -->
           <mat-card *ngIf="produitsDiagnostique.length > 0"

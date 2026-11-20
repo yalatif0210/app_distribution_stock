@@ -50,11 +50,62 @@ public class NotificationService {
             utilisateurRepo.findByStructureId(ligne.getStructureSource().getId()).forEach(user ->
                     creerNotification(plan, ligne, user, "RAPPEL_EXECUTION",
                             "Le plan " + plan.getId() + " a été validé. Veuillez exécuter le transfert de "
-                                    + ligne.getQuantiteProposee() + " " + ligne.getProduit().getUnite()
+                                    + quantite(ligne.getQuantiteProposee()) + " " + ligne.getProduit().getUnite()
                                     + " de " + ligne.getProduit().getNom()
-                                    + " vers " + ligne.getStructureCible().getNom() + ")")
+                                    + " vers " + ligne.getStructureCible().getNom() + ".")
+            );
+            // Le site destinataire sait ce qu'il doit recevoir, et qu'il devra en confirmer la réception
+            if (ligne.getStructureCible() == null) return;
+            utilisateurRepo.findByStructureId(ligne.getStructureCible().getId()).forEach(user ->
+                    creerNotification(plan, ligne, user, "RECEPTION_ATTENDUE",
+                            "Le plan " + plan.getId() + " a été validé : " + ligne.getStructureSource().getNom()
+                                    + " doit vous livrer " + quantite(ligne.getQuantiteProposee()) + " "
+                                    + ligne.getProduit().getUnite() + " de " + ligne.getProduit().getNom()
+                                    + ". À l'arrivée, confirmez la réception dans Suivi des plans.")
             );
         });
+    }
+
+    /** Le pharmacien de la région est prévenu de chaque réception confirmée, avec l'écart éventuel. */
+    public void notifierReception(LignePlan ligne, ReceptionLigne reception, Utilisateur auteur) {
+        PlanReattribution plan = ligne.getPlan();
+        if (plan == null || plan.getRegion() == null) return;
+        String unite = ligne.getProduit() != null ? " " + ligne.getProduit().getUnite() : "";
+        StringBuilder m = new StringBuilder()
+                .append(ligne.getStructureCible().getNom()).append(" a reçu ")
+                .append(quantite(reception.getQuantite())).append(unite)
+                .append(" de ").append(ligne.getProduit().getNom())
+                .append(" (plan ").append(plan.getId()).append(") : ")
+                .append(quantite(ligne.getQuantiteExecutee())).append(" sur ")
+                .append(quantite(ligne.getQuantiteProposee())).append(" reçus.");
+        if (reception.getMotifEcart() != null) {
+            m.append(" Réception close avec un écart : ").append(libelleMotif(reception.getMotifEcart())).append(".");
+        }
+        utilisateurRepo.findActiveByRegionAndRole(plan.getRegion().getId(), "PHARMACIEN_REGION").stream()
+                .filter(u -> !u.getId().equals(auteur.getId()))
+                .forEach(u -> {
+                    // Chaque réception est une information distincte : pas de dédoublonnage ici
+                    Notification n = new Notification();
+                    n.setPlan(plan);
+                    n.setLignePlan(ligne);
+                    n.setDestinataire(u);
+                    n.setType("RECEPTION");
+                    n.setMessage(m.toString());
+                    notificationRepo.save(n);
+                });
+    }
+
+    private static String libelleMotif(String motif) {
+        return switch (motif) {
+            case "CASSE" -> "casse";
+            case "PEREMPTION" -> "péremption";
+            case "MANQUANT" -> "manquant";
+            default -> "autre";
+        };
+    }
+
+    private static String quantite(java.math.BigDecimal q) {
+        return q == null ? "0" : q.stripTrailingZeros().toPlainString();
     }
 
     public void creerRappel(PlanReattribution plan) {

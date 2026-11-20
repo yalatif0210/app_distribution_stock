@@ -80,13 +80,8 @@ import { SaisieStock, Programme, PeriodeSaisie, Region } from '../../../core/mod
       </mat-card-content>
     </mat-card>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement des stocks…</span>
-    </div>
 
-    <ng-container *ngIf="!loading">
+    <ng-container>
       <!-- Indicateurs KPI -->
       <div class="grid-4" style="margin-bottom:1.25rem;" *ngIf="saisies.length > 0">
         <div class="stat-card">

@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { sansVoile } from '../http/chargement';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
 import { AppNotification } from '../models/models';
 
@@ -15,7 +16,8 @@ export class NotificationService {
   }
 
   refreshCount(): void {
-    this.http.get<{ count: number }>('/api/notifications/count').subscribe(r => this.countSubject.next(r.count));
+    // Compteur de la cloche : requête de fond, sans voile de chargement
+    this.http.get<{ count: number }>('/api/notifications/count', { context: sansVoile() }).subscribe(r => this.countSubject.next(r.count));
   }
 
   marquerLu(id: number): Observable<void> {

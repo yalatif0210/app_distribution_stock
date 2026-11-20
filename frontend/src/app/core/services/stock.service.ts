@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { sansVoile } from '../http/chargement';
 import { Observable } from 'rxjs';
 import { AnalyseResultat, EtatStock, EtatStockSummary, ImportResultat, LigneSaisie, ProduitSelection, Programme, SaisieStock } from '../models/models';
 
@@ -32,7 +33,8 @@ export class StockService {
     cmm: number | null;
     expireDate: string | null;
   }): Observable<LigneSaisie> {
-    return this.http.post<LigneSaisie>('/api/stocks/etat/ligne', req);
+    // Enregistrement automatique à la sortie d'un champ : sans voile de chargement
+    return this.http.post<LigneSaisie>('/api/stocks/etat/ligne', req, { context: sansVoile() });
   }
 
   submitEtat(etatId: number): Observable<EtatStock> {

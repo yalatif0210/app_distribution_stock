@@ -29,11 +29,6 @@ import { AppNotification } from '../../core/models/models';
       </button>
     </div>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement des notifications…</span>
-    </div>
 
     <!-- Empty state -->
     <div *ngIf="!loading && notifications.length === 0"
@@ -44,7 +39,7 @@ import { AppNotification } from '../../core/models/models';
     </div>
 
     <!-- Notifications list -->
-    <mat-card *ngIf="!loading && notifications.length > 0" style="padding:0;overflow:hidden;">
+    <mat-card *ngIf="notifications.length > 0" style="padding:0;overflow:hidden;">
       <ng-container *ngFor="let n of notifications; let last = last">
         <div
           style="display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.25rem;cursor:pointer;transition:background .15s;"
@@ -120,30 +115,39 @@ export class NotificationsComponent implements OnInit {
   notifIcon(type: string): string {
     if (type === 'RAPPEL_EXECUTION') return 'alarm';
     if (type === 'ALERTE_RETARD')    return 'warning_amber';
+    if (type === 'RECEPTION_ATTENDUE') return 'local_shipping';
+    if (type === 'RECEPTION')        return 'inventory';
     return 'info';
   }
 
   notifLabel(type: string): string {
     if (type === 'RAPPEL_EXECUTION') return 'Rappel exécution';
     if (type === 'ALERTE_RETARD')    return 'Alerte retard';
+    if (type === 'RECEPTION_ATTENDUE') return 'Réception attendue';
+    if (type === 'RECEPTION')        return 'Réception confirmée';
     return 'Information';
   }
 
   notifIconColor(type: string): string {
     if (type === 'RAPPEL_EXECUTION') return '#b45309';
     if (type === 'ALERTE_RETARD')    return '#b91c1c';
+    if (type === 'RECEPTION_ATTENDUE') return '#4f46e5';
+    if (type === 'RECEPTION')        return '#15803d';
     return '#0369a1';
   }
 
   notifIconBg(type: string): string {
     if (type === 'RAPPEL_EXECUTION') return 'rgba(180,83,9,.1)';
     if (type === 'ALERTE_RETARD')    return 'rgba(185,28,28,.08)';
+    if (type === 'RECEPTION_ATTENDUE') return 'rgba(79,70,229,.1)';
+    if (type === 'RECEPTION')        return 'rgba(21,128,61,.1)';
     return 'rgba(3,105,161,.08)';
   }
 
   notifBadgeClass(type: string): string {
     if (type === 'ALERTE_RETARD')    return 'badge badge-rupture';
     if (type === 'RAPPEL_EXECUTION') return 'badge badge-surveiller';
+    if (type === 'RECEPTION')        return 'badge badge-bien-stocke';
     return 'badge badge-ouverte';
   }
 }

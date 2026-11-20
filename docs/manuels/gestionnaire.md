@@ -60,7 +60,22 @@ Vous consultez les plans de votre région :
 
 Pour une version papier, cliquez sur l'icône 🖨 d'un plan. Le document A4 comporte des colonnes vides « Visa expédition » et « Visa réception » à signer lors du transfert.
 
-Quand votre site doit expédier un produit, une notification **« Transfert à réaliser »** vous prévient. Préparez la quantité indiquée. Le pharmacien de région enregistre ensuite la quantité réellement livrée.
+Quand votre site doit expédier un produit, une notification **« Transfert à réaliser »** vous prévient. Préparez la quantité indiquée.
+
+### Confirmer une réception
+
+Quand votre site doit **recevoir** un produit, une notification vous prévient dès la validation du plan. À l'arrivée des produits :
+
+1. **Plans → Suivi des plans**, ouvrez le plan ;
+2. sur le mouvement qui vous est destiné, cliquez **Confirmer la réception** ;
+3. saisissez la **quantité reçue** lors de cette livraison et la **date de réception**, puis **Confirmer**.
+
+La quantité que vous confirmez devient la quantité exécutée du mouvement. Le pharmacien de région en est prévenu.
+
+- **Livraison en plusieurs fois** : confirmez chaque arrivage. Les quantités s'additionnent ; le mouvement reste « Partiel » jusqu'à ce que tout soit reçu.
+- **Il manque des produits et rien d'autre n'arrivera** (casse, péremption, manquant) : cochez **« Plus rien n'est attendu »** et choisissez le motif de l'écart. Le mouvement est alors terminé avec cet écart.
+- Vous ne pouvez pas déclarer plus que la quantité prévue, ni une date future ou antérieure à la validation du plan.
+- L'icône d'historique sur un mouvement montre toutes les réceptions enregistrées, avec leur date et leur auteur.
 
 ## 4. Consulter l'historique
 

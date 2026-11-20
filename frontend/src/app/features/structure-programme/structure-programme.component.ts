@@ -47,14 +47,9 @@ interface StructureRow {
       </button>
     </div>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement de la configuration…</span>
-    </div>
 
     <!-- Legend -->
-    <div *ngIf="!loading" style="display:flex; align-items:center; gap:1rem; font-size:.8rem; color:var(--text-secondary); margin-bottom:.75rem;">
+    <div style="display:flex; align-items:center; gap:1rem; font-size:.8rem; color:var(--text-secondary); margin-bottom:.75rem;">
       <div style="display:flex; align-items:center; gap:.4rem;">
         <span style="display:inline-block;width:28px;height:14px;background:var(--accent-color);border-radius:7px;"></span>
         <span>Actif</span>
@@ -68,7 +63,7 @@ interface StructureRow {
     </div>
 
     <!-- Table -->
-    <mat-card *ngIf="!loading" style="overflow:auto;">
+    <mat-card style="overflow:auto;">
       <mat-card-content style="overflow-x:auto; padding:0;">
         <div style="padding:.5rem 1rem .25rem;">
           <mat-form-field appearance="outline" style="width:100%;">

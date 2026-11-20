@@ -53,6 +53,35 @@ export interface LignePlan {
   quantiteProposee: number; quantiteExecutee: number; statut: string;
   expireDate: string | null;
   dateExecution: string | null; notes: string | null; progression: number;
+  /** Dernière date de réception confirmée par le site destinataire. */
+  dateReception?: string | null;
+  /** Réception close avec un écart : CASSE, PEREMPTION, MANQUANT ou AUTRE. */
+  motifEcart?: string | null;
+}
+
+/** Réception confirmée par le site destinataire (une livraison). */
+export interface Reception {
+  id: number; quantite: number; dateReception: string; motifEcart: string | null;
+  notes: string | null; saisiPar: string; createdAt: string;
+}
+
+export interface ReceptionRequest {
+  quantite: number; dateReception: string; terminee: boolean; motifEcart: string | null; notes: string | null;
+}
+
+/** Délais d'exécution des plans d'une région sur l'année. */
+export interface DelaiRegion {
+  regionId: number | null; region: string;
+  nbPlans: number; nbPlansExecutes: number; nbPlansEnCours: number;
+  delaiMoyenPlanJours: number | null; delaiMedianPlanJours: number | null;
+  delaiMinPlanJours: number | null; delaiMaxPlanJours: number | null;
+  delaiMoyenMouvementJours: number | null; nbMouvementsRecus: number;
+  ageMoyenEnCoursJours: number | null; tauxQuantitesRecues: number; nbReceptionsAvecEcart: number;
+}
+
+export interface Delais {
+  annee: number; programme: string; regions: DelaiRegion[]; ensemble: DelaiRegion;
+  parMois: { mois: number; delaiMoyenParRegion: Record<string, number> }[];
 }
 
 export interface StockSourceInfo {
@@ -116,6 +145,8 @@ export interface EtatStockSummary {
   statut: 'SUGGESTED' | 'SUBMITTED';
   dateCreation: string | null; dateSoumission: string | null;
   nbLignes: number; nbLignesSaved: number; nbLignesIgnored: number;
+  /** Renseignée à l'écran pour l'admin et le superviseur (vue multi-régions). */
+  regionNom?: string;
 }
 
 export interface EtatStock {

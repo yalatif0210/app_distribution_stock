@@ -38,14 +38,9 @@ import { PeriodeSaisie } from '../../core/models/models';
       </button>
     </div>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement des périodes…</span>
-    </div>
 
     <!-- Table card -->
-    <mat-card *ngIf="!loading">
+    <mat-card>
       <mat-card-content>
         <div style="padding:.5rem 0 .5rem;">
           <mat-form-field appearance="outline" style="width:100%;">

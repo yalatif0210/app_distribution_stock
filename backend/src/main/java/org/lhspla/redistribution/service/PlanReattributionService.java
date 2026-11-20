@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lhspla.redistribution.dto.request.LignePlanRequest;
 import org.lhspla.redistribution.dto.request.ExecutionRequest;
+import org.lhspla.redistribution.dto.request.ReceptionRequest;
+import org.lhspla.redistribution.dto.response.ReceptionDTO;
 import org.lhspla.redistribution.dto.request.PlanGenerationRequest;
 import org.lhspla.redistribution.dto.response.AnalyseResultatDTO;
 import org.lhspla.redistribution.dto.response.LignePlanDTO;
@@ -33,6 +35,7 @@ public class PlanReattributionService {
 
     private final PlanReattributionRepository planRepo;
     private final LignePlanRepository ligneRepo;
+    private final ReceptionLigneRepository receptionRepo;
     private final PeriodeSaisieRepository periodeRepo;
     private final ProgrammeRepository programmeRepo;
     private final RegionRepository regionRepo;
@@ -302,29 +305,157 @@ public class PlanReattributionService {
         verifierCloturePlan(plan);
     }
 
-    public LignePlanDTO executerLigne(Long planId, Long ligneId, ExecutionRequest req) {
+    // ─── Réceptions et exécution ─────────────────────────────────────────────────
+    //
+    // La quantité exécutée d'une ligne est la somme des réceptions confirmées par le site
+    // destinataire. Le pharmacien peut aussi saisir le total pour le compte du site : la
+    // différence est alors enregistrée comme une réception à son nom.
+
+    private static final Set<String> MOTIFS_ECART = Set.of("CASSE", "PEREMPTION", "MANQUANT", "AUTRE");
+
+    /**
+     * Saisie du total exécuté par le pharmacien (ou l'admin) pour le compte du site.
+     * Le total ne peut ni dépasser la quantité prévue ni descendre sous les réceptions déjà
+     * confirmées ; atteindre la quantité prévue clôt la ligne.
+     */
+    public LignePlanDTO executerLigne(Long planId, Long ligneId, ExecutionRequest req, String username) {
+        PlanReattribution plan = planPourReception(planId);
+        LignePlan ligne = ligneOuverte(planId, ligneId);
+        BigDecimal prevu = ligne.getQuantiteProposee();
+        BigDecimal cumul = valeur(ligne.getQuantiteExecutee());
+        BigDecimal total = req.getQuantiteExecutee();
+
+        if (total.compareTo(prevu) > 0) {
+            throw BusinessException.badRequest("La quantité exécutée ne peut pas dépasser la quantité prévue ("
+                    + prevu.stripTrailingZeros().toPlainString() + ").");
+        }
+        if (total.compareTo(cumul) < 0) {
+            throw BusinessException.badRequest("Le site a déjà confirmé la réception de "
+                    + cumul.stripTrailingZeros().toPlainString()
+                    + " : la quantité exécutée ne peut pas être inférieure.");
+        }
+        BigDecimal ecart = total.subtract(cumul);
+        if (ecart.signum() > 0) {
+            ReceptionLigne r = new ReceptionLigne();
+            r.setLigne(ligne);
+            r.setQuantite(ecart);
+            r.setDateReception(java.time.LocalDate.now());
+            r.setNotes(req.getNotes());
+            r.setSaisiPar(username);
+            receptionRepo.save(r);
+            appliquerReception(ligne, total, r.getDateReception(), total.compareTo(prevu) == 0, null);
+        }
+        ligne.setNotes(req.getNotes());
+        ligneRepo.save(ligne);
+        verifierCloturePlan(plan);
+        return toLigneDTO(ligne);
+    }
+
+    /**
+     * Réception confirmée par le site destinataire (ou saisie pour lui par le pharmacien ou
+     * l'admin). Le cumul devient la quantité exécutée ; la ligne est close quand le cumul
+     * atteint la quantité prévue, ou quand le site déclare ne plus rien attendre (motif d'écart
+     * obligatoire).
+     */
+    public LignePlanDTO receptionner(Long planId, Long ligneId, ReceptionRequest req, String username) {
+        PlanReattribution plan = planPourReception(planId);
+        LignePlan ligne = ligneOuverte(planId, ligneId);
+        Utilisateur auteur = utilisateurRepo.findByUsername(username).orElseThrow();
+        if ("GESTIONNAIRE".equals(auteur.getRole().getName())
+                && (auteur.getStructure() == null || ligne.getStructureCible() == null
+                    || !auteur.getStructure().getId().equals(ligne.getStructureCible().getId()))) {
+            throw BusinessException.forbidden("Seul le site destinataire peut confirmer cette réception.");
+        }
+
+        java.time.LocalDate date = req.getDateReception();
+        if (date.isAfter(java.time.LocalDate.now())) {
+            throw BusinessException.badRequest("La date de réception ne peut pas être dans le futur.");
+        }
+        if (plan.getDateValidation() != null && date.isBefore(plan.getDateValidation().toLocalDate())) {
+            throw BusinessException.badRequest("La date de réception ne peut pas précéder la validation du plan ("
+                    + plan.getDateValidation().toLocalDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) + ").");
+        }
+
+        BigDecimal prevu = ligne.getQuantiteProposee();
+        BigDecimal cumul = valeur(ligne.getQuantiteExecutee()).add(req.getQuantite());
+        if (cumul.compareTo(prevu) > 0) {
+            throw BusinessException.badRequest("Vous ne pouvez pas déclarer plus que la quantité prévue ("
+                    + prevu.stripTrailingZeros().toPlainString() + "). Déjà reçu : "
+                    + valeur(ligne.getQuantiteExecutee()).stripTrailingZeros().toPlainString() + ".");
+        }
+        boolean complete = cumul.compareTo(prevu) == 0;
+        boolean terminee = complete || req.isTerminee();
+        String motif = null;
+        if (terminee && !complete) {
+            motif = req.getMotifEcart() == null ? null : req.getMotifEcart().trim().toUpperCase();
+            if (motif == null || !MOTIFS_ECART.contains(motif)) {
+                throw BusinessException.badRequest("Indiquez le motif de l'écart : casse, péremption, manquant ou autre.");
+            }
+        }
+
+        ReceptionLigne r = new ReceptionLigne();
+        r.setLigne(ligne);
+        r.setQuantite(req.getQuantite());
+        r.setDateReception(date);
+        r.setMotifEcart(motif);
+        r.setNotes(req.getNotes());
+        r.setSaisiPar(username);
+        receptionRepo.save(r);
+
+        appliquerReception(ligne, cumul, date, terminee, motif);
+        ligneRepo.save(ligne);
+        notificationService.notifierReception(ligne, r, auteur);
+        verifierCloturePlan(plan);
+        return toLigneDTO(ligne);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReceptionDTO> receptions(Long planId, Long ligneId) {
+        ligneDuPlan(planId, ligneId);
+        return receptionRepo.findByLigneIdOrderByDateReceptionAscIdAsc(ligneId).stream().map(r -> {
+            ReceptionDTO d = new ReceptionDTO();
+            d.setId(r.getId());
+            d.setQuantite(r.getQuantite());
+            d.setDateReception(r.getDateReception());
+            d.setMotifEcart(r.getMotifEcart());
+            d.setNotes(r.getNotes());
+            d.setSaisiPar(r.getSaisiPar());
+            d.setCreatedAt(r.getCreatedAt());
+            return d;
+        }).toList();
+    }
+
+    private PlanReattribution planPourReception(Long planId) {
         PlanReattribution plan = planRepo.verrouiller(planId)
                 .orElseThrow(() -> BusinessException.notFound("Plan", planId));
         if ("BROUILLON".equals(plan.getStatut())) {
             throw BusinessException.badRequest("Le plan doit être validé avant d'enregistrer des exécutions");
         }
+        return plan;
+    }
 
+    private LignePlan ligneOuverte(Long planId, Long ligneId) {
         LignePlan ligne = ligneDuPlan(planId, ligneId);
-
-        ligne.setQuantiteExecutee(req.getQuantiteExecutee());
-        ligne.setNotes(req.getNotes());
-        ligne.setDateExecution(LocalDateTime.now());
-
-        int cmp = req.getQuantiteExecutee().compareTo(ligne.getQuantiteProposee());
-        if (cmp >= 0) {
-            ligne.setStatut("EXECUTE");
-        } else if (req.getQuantiteExecutee().compareTo(BigDecimal.ZERO) > 0) {
-            ligne.setStatut("PARTIEL");
+        if ("ANNULE".equals(ligne.getStatut())) {
+            throw BusinessException.badRequest("Ce mouvement a été annulé.");
         }
+        if ("EXECUTE".equals(ligne.getStatut())) {
+            throw BusinessException.badRequest("La réception de ce mouvement est déjà close.");
+        }
+        return ligne;
+    }
 
-        ligneRepo.save(ligne);
-        verifierCloturePlan(plan);
-        return toLigneDTO(ligne);
+    private static void appliquerReception(LignePlan ligne, BigDecimal cumul, java.time.LocalDate date,
+                                           boolean terminee, String motif) {
+        ligne.setQuantiteExecutee(cumul);
+        if (ligne.getDateReception() == null || date.isAfter(ligne.getDateReception())) ligne.setDateReception(date);
+        ligne.setDateExecution(LocalDateTime.now());
+        ligne.setStatut(terminee ? "EXECUTE" : "PARTIEL");
+        if (motif != null) ligne.setMotifEcart(motif);
+    }
+
+    private static BigDecimal valeur(BigDecimal b) {
+        return b != null ? b : BigDecimal.ZERO;
     }
 
     private void verifierCloturePlan(PlanReattribution plan) {
@@ -617,6 +748,8 @@ public class PlanReattributionService {
         dto.setQuantiteProposee(l.getQuantiteProposee());
         dto.setQuantiteExecutee(l.getQuantiteExecutee());
         dto.setDateExecution(l.getDateExecution());
+        dto.setDateReception(l.getDateReception());
+        dto.setMotifEcart(l.getMotifEcart());
         dto.setNotes(l.getNotes());
         if (l.getProduit() != null) {
             dto.setProduitId(l.getProduit().getId());

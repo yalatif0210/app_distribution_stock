@@ -12,9 +12,11 @@ Quand vous suivez plusieurs régions, les écrans vous demandent de **préciser 
 
 ## 1. Vérifier les saisies
 
-**Saisies → Complétude** : choisissez la région, la période et le programme. Vous voyez le taux de complétude (états soumis ÷ états attendus) et la liste des sites en retard. La relance des sites reste au pharmacien de région.
+Sur les deux écrans ci-dessous, choisissez d'abord la **région**, puis la **date RAS** : la liste propose alors toutes les dates RAS de cette région, avec leur statut (ouverte ou fermée). Avec « Toutes mes régions », elle propose les dates communes, et les résultats de chaque région qui a cette date sont réunis. Si vous ne suivez qu'une région, elle est choisie d'office.
 
-**Saisies → États de stock** : l'état de chaque site, produit par produit, avec MSD et statut.
+**Saisies → Complétude** : région, date RAS et programme. Vous voyez le taux de complétude (états soumis ÷ états attendus) et la liste des sites en retard. La relance des sites reste au pharmacien de région.
+
+**Saisies → États de stock** : région, date RAS et, au besoin, programme, puis **Rechercher**. Le tableau indique la région de chaque état ; cliquez un état pour voir chaque produit avec son MSD et son statut.
 
 ## 2. Suivre les plans
 
@@ -43,5 +45,7 @@ La section **H** montre l'avancement des plans mois par mois.
 - Si votre périmètre couvre toutes les régions, vos statistiques sont celles du niveau national.
 
 Les boutons **Excel** et **PDF** exportent les résultats.
+
+**Délais d'exécution par région**, en bas de la page : choisissez une **année de validation** et, au besoin, un programme, puis **Comparer**. Pour chaque région : plans validés, exécutés et en cours, délai moyen et médian d'exécution d'un plan, délai moyen d'un mouvement, ancienneté des plans en cours, part des quantités reçues et écarts déclarés. La ligne **« Ensemble des régions »** sert de référence ; deux graphiques comparent les régions et suivent les délais mois par mois.
 
 Le calcul de chaque indicateur est expliqué, avec des exemples, dans le [guide des indicateurs](indicateurs.md).

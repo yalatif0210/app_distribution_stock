@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { sansVoile } from '../http/chargement';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { ExecutionProgressionItem, LignePlan, PlanReattribution, StockSourceInfo } from '../models/models';
+import { ExecutionProgressionItem, LignePlan, PlanReattribution, Reception, ReceptionRequest, StockSourceInfo } from '../models/models';
 
 @Injectable({ providedIn: 'root' })
 export class PlanService {
@@ -41,24 +42,34 @@ export class PlanService {
     return this.http.post<PlanReattribution>(`/api/plans/${id}/valider`, {});
   }
 
-  ajouterLigne(planId: number, data: Partial<LignePlan>): Observable<LignePlan> {
-    return this.http.post<LignePlan>(`/api/plans/${planId}/lignes`, data);
+  /** `fond` : enregistrement automatique (répartition manuelle), sans voile de chargement. */
+  ajouterLigne(planId: number, data: Partial<LignePlan>, fond = false): Observable<LignePlan> {
+    return this.http.post<LignePlan>(`/api/plans/${planId}/lignes`, data, fond ? { context: sansVoile() } : {});
   }
 
-  modifierLigne(planId: number, ligneId: number, data: Partial<LignePlan>): Observable<LignePlan> {
-    return this.http.put<LignePlan>(`/api/plans/${planId}/lignes/${ligneId}`, data);
+  modifierLigne(planId: number, ligneId: number, data: Partial<LignePlan>, fond = false): Observable<LignePlan> {
+    return this.http.put<LignePlan>(`/api/plans/${planId}/lignes/${ligneId}`, data, fond ? { context: sansVoile() } : {});
   }
 
   supprimerPlan(id: number): Observable<void> {
     return this.http.delete<void>(`/api/plans/${id}`);
   }
 
-  supprimerLigne(planId: number, ligneId: number): Observable<void> {
-    return this.http.delete<void>(`/api/plans/${planId}/lignes/${ligneId}`);
+  supprimerLigne(planId: number, ligneId: number, fond = false): Observable<void> {
+    return this.http.delete<void>(`/api/plans/${planId}/lignes/${ligneId}`, fond ? { context: sansVoile() } : {});
   }
 
   executerLigne(planId: number, ligneId: number, quantiteExecutee: number, notes?: string): Observable<LignePlan> {
     return this.http.put<LignePlan>(`/api/plans/${planId}/lignes/${ligneId}/execution`, { quantiteExecutee, notes });
+  }
+
+  /** Réception confirmée par le site destinataire : le cumul devient la quantité exécutée. */
+  receptionner(planId: number, ligneId: number, req: ReceptionRequest): Observable<LignePlan> {
+    return this.http.post<LignePlan>(`/api/plans/${planId}/lignes/${ligneId}/receptions`, req);
+  }
+
+  receptions(planId: number, ligneId: number): Observable<Reception[]> {
+    return this.http.get<Reception[]>(`/api/plans/${planId}/lignes/${ligneId}/receptions`);
   }
 
   getStockSource(periodeId: number, produitId: number, structureSourceId: number,

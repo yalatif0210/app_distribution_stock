@@ -64,9 +64,13 @@ Quand le plan est complet, cliquez sur **Valider le plan**. Il n'est plus modifi
 
 **Redistribution → Suivi des plans**
 
-Ouvrez le plan, puis **Mettre à jour** sur chaque mouvement, et saisissez la **quantité réellement livrée** :
-- égale ou supérieure à la quantité prévue : le mouvement passe en **Exécuté** ;
-- inférieure : il passe en **Partiel**.
+Ce sont les **sites destinataires** qui confirment ce qu'ils reçoivent, depuis leur compte : quantité, date de réception et, si la réception est close avec un manque, le motif de l'écart (casse, péremption, manquant, autre). La somme des réceptions devient la quantité exécutée, et vous recevez une notification à chaque réception.
+
+Pour un site qui n'a pas accès à l'application, ouvrez le plan, puis **Mettre à jour** sur le mouvement, et saisissez le **total livré** :
+- égal à la quantité prévue : le mouvement passe en **Exécuté** ;
+- inférieur : il passe en **Partiel**.
+
+Le total ne peut ni dépasser la quantité prévue, ni descendre sous les réceptions déjà confirmées par le site. La différence est enregistrée comme une réception à votre nom, datée du jour.
 
 Quand tous les mouvements sont exécutés ou annulés, le plan est **clôturé** automatiquement.
 

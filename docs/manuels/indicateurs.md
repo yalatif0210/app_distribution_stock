@@ -235,12 +235,14 @@ Pour chaque mois de l'année, la **moyenne de l'avancement des plans validés** 
 Le compteur **n/m** d'un plan donne le nombre de mouvements exécutés au moins en partie (n) sur le total des mouvements non annulés (m). *Exemple* : 2/3, soit un mouvement exécuté, un partiel et un en attente.
 
 Statuts d'un mouvement :
-- **En attente** : rien n'est encore livré ;
-- **Partiel** : une partie de la quantité prévue est livrée ;
-- **Exécuté** : la quantité prévue est livrée ;
+- **En attente** : rien n'est encore reçu ;
+- **Partiel** : une partie de la quantité prévue est reçue, la suite est attendue ;
+- **Exécuté** : la quantité prévue est reçue, ou le site a clos la réception avec un écart déclaré (casse, péremption, manquant, autre) ;
 - **Annulé** : le mouvement est retiré du plan.
 
 Un plan est **clôturé** automatiquement quand tous ses mouvements sont exécutés ou annulés.
+
+**La quantité exécutée** d'un mouvement est la somme des réceptions confirmées par le site destinataire (ou saisies pour lui par le pharmacien). *Exemple* : 100 flacons prévus ; le site confirme 60 le 12 octobre, puis 30 le 20 octobre, et déclare que les 10 derniers sont cassés. Quantité exécutée : 90, statut « Exécuté » avec un écart « casse » de 10, date de réception : 20 octobre.
 
 ---
 
@@ -262,7 +264,7 @@ Exemple ci-dessous : la Région Démo, du 1er septembre au 19 novembre 2026.
 | Mouvements | lignes non annulées de ces plans | 13 : 10 exécutés, 1 partiel, 2 en attente |
 | Exécution des mouvements | (exécutés + partiels) ÷ mouvements | (10 + 1) ÷ 13 = 84,6 % |
 | Exécution des quantités | quantités exécutées ÷ quantités prévues | 92,7 % |
-| Délai d'exécution | jours entre la validation du plan et l'exécution du mouvement, en moyenne et en médiane | 6 jours |
+| Délai d'exécution | jours entre la validation du plan et la réception du mouvement par le site, en moyenne et en médiane | 6 jours |
 | Ruptures résorbées | couples site/produit en rupture avant le plan qui ont reçu une quantité | 5 |
 | Destinataires servis | couples site/produit qui ont reçu une quantité | 11 |
 
@@ -271,3 +273,21 @@ Exemple ci-dessous : la Région Démo, du 1er septembre au 19 novembre 2026.
 **L'exécution des quantités** additionne des unités différentes (comprimés, flacons…). C'est un ordre de grandeur global. Le tableau **par produit** donne les quantités exactes dans l'unité de chaque produit.
 
 Les tableaux reprennent ces calculs par région, par programme et par mois de validation. Ils listent aussi les produits, ainsi que les 10 sites expéditeurs les plus sollicités et les 10 destinataires les plus servis, classés par nombre de mouvements.
+
+### Délais d'exécution par région, sur l'année
+
+Plans **validés pendant l'année choisie**, région par région, avec une ligne **« Ensemble des régions »** qui réunit toutes les régions comme référence (le pharmacien n'y voit pas le détail des autres régions).
+
+| Indicateur | Calcul |
+|---|---|
+| Plans exécutés | plans dont tous les mouvements non annulés sont « Exécuté » (reçus en entier, ou clos avec un écart) |
+| Plans en cours | les autres plans validés |
+| Délai d'un plan | jours entre la validation du plan et la **dernière** réception de ses mouvements ; moyenne, médiane, plus court et plus long, sur les plans exécutés |
+| Délai d'un mouvement | jours entre la validation du plan et la réception complète du mouvement, moyenne sur les mouvements exécutés, y compris ceux des plans encore en cours |
+| Âge des plans en cours | jours écoulés depuis leur validation, en moyenne |
+| Quantités reçues | somme des réceptions ÷ quantités prévues |
+| Écarts déclarés | mouvements clos par le site avec un écart |
+
+*Exemple* : un plan validé le 1er mars compte trois mouvements, reçus le 5, le 9 et le 14 mars. Délai du plan : 13 jours (du 1er au 14 mars). Délais des mouvements : 4, 8 et 13 jours, soit 8,3 jours en moyenne. Si la région a exécuté trois plans en 13, 6 et 20 jours, son délai moyen est de 13 jours et sa médiane de 13 jours.
+
+Le graphique **mois par mois** place chaque plan exécuté dans le mois de sa validation : il montre si les délais s'allongent ou se raccourcissent au fil de l'année, région par région.

@@ -77,13 +77,8 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, StockSourceInfo, Lig
       </div>
     </div>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement du plan…</span>
-    </div>
 
-    <ng-container *ngIf="!loading && plan">
+    <ng-container *ngIf="plan">
 
       <!-- Bannière statut plan validé -->
       <div *ngIf="plan.statut === 'VALIDE' || plan.statut === 'EN_COURS'"
@@ -256,10 +251,6 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, StockSourceInfo, Lig
         <div *ngIf="showAjout && plan.statut === 'BROUILLON'"
              style="padding:1rem;border-bottom:1px solid var(--border-color);background:#f8fafc;">
 
-          <!-- Chargement analyse contextuelle -->
-          <div *ngIf="loadingAnalyse" style="display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--text-secondary);margin-bottom:.75rem;">
-            <mat-spinner diameter="14"></mat-spinner> Chargement de l'analyse des stocks…
-          </div>
 
           <!-- Aucun produit en tension -->
           <div *ngIf="!loadingAnalyse && produitsEnTension.length === 0"
@@ -269,7 +260,7 @@ import { AnalyseResultat, AnalyseProduit, StructureAnalyse, StockSourceInfo, Lig
           </div>
 
           <!-- Formulaire pas à pas (calqué sur génération manuelle) -->
-          <ng-container *ngIf="!loadingAnalyse && produitsEnTension.length > 0">
+          <ng-container *ngIf="produitsEnTension.length > 0">
 
             <!-- Étape 1 : Produit -->
             <div style="font-size:.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">1. Produit en tension</div>

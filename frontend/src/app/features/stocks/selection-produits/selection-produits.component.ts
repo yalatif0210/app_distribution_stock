@@ -65,7 +65,7 @@ import { Programme, ProduitSelection } from '../../../core/models/models';
           Aucun produit dans ce programme.
         </div>
 
-        <table *ngIf="!loadingProduits && produits.length > 0"
+        <table *ngIf="produits.length > 0"
           style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:#f8fafc;border-bottom:2px solid var(--border-color);">

@@ -44,13 +44,23 @@ import { CompletudeDTO, PeriodeSaisie, Region } from '../../core/models/models';
     <mat-card style="margin-bottom:1.25rem;">
       <mat-card-content style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; padding-top:.5rem;">
 
-        <!-- Période groupée par date (admin / superviseur) -->
+        <!-- Admin / superviseur : d'abord la région, puis les dates RAS de cette région -->
         <mat-form-field *ngIf="auth.isAdmin() || auth.isSuperviseur()" appearance="fill" style="flex:1; min-width:200px;">
-          <mat-label>Période</mat-label>
-          <mat-select [(ngModel)]="selectedDateRas" (selectionChange)="onFilterChange()">
+          <mat-label>Région</mat-label>
+          <mat-select [(ngModel)]="selectedRegionId" (selectionChange)="onRegionChange()">
+            <mat-option [value]="null">{{ auth.isAdmin() ? 'Toutes les régions' : 'Toutes mes régions' }}</mat-option>
+            <mat-option *ngFor="let r of regions" [value]="r.id">{{ r.nom }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field *ngIf="auth.isAdmin() || auth.isSuperviseur()" appearance="fill" style="flex:1; min-width:200px;">
+          <mat-label>Date RAS</mat-label>
+          <mat-select [(ngModel)]="selectedDateRas" (selectionChange)="onFilterChange()" [disabled]="!periodDateOptions.length">
             <mat-option *ngFor="let p of periodDateOptions" [value]="p.dateRas">{{ p.label }}</mat-option>
           </mat-select>
-          <mat-hint *ngIf="selectedDateRas">
+          <mat-hint *ngIf="!periodDateOptions.length">Aucune date RAS pour cette région</mat-hint>
+          <mat-hint *ngIf="periodDateOptions.length && selectedRegionId">{{ periodDateOptions.length }} date(s) RAS dans cette région</mat-hint>
+          <mat-hint *ngIf="periodDateOptions.length && !selectedRegionId && selectedDateRas">
             {{ regionsForDate(selectedDateRas).length }} région(s) avec cette date
           </mat-hint>
         </mat-form-field>
@@ -72,18 +82,6 @@ import { CompletudeDTO, PeriodeSaisie, Region } from '../../core/models/models';
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field *ngIf="auth.isAdmin() || auth.isSuperviseur()" appearance="fill" style="flex:1; min-width:200px;">
-          <mat-label>Région(s)</mat-label>
-          <mat-select [(ngModel)]="selectedRegionIds" multiple (selectionChange)="onFilterChange()">
-            <mat-option *ngFor="let r of regions" [value]="r.id">{{ r.nom }}</mat-option>
-          </mat-select>
-          <mat-hint>
-            {{ selectedRegionIds.length === 0
-               ? (auth.isAdmin() ? 'Toutes les régions' : 'Toutes mes régions')
-               : selectedRegionIds.length + ' région(s)' }}
-          </mat-hint>
-        </mat-form-field>
-
         <button mat-stroked-button color="primary" (click)="load()"
           [disabled]="!canLoad"
           style="height:56px; padding:0 1.5rem;">
@@ -92,13 +90,8 @@ import { CompletudeDTO, PeriodeSaisie, Region } from '../../core/models/models';
       </mat-card-content>
     </mat-card>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement…</span>
-    </div>
 
-    <ng-container *ngIf="!loading && completudes.length > 0">
+    <ng-container *ngIf="completudes.length > 0">
 
       <!-- Global KPI -->
       <mat-card *ngIf="globalStat as g" style="margin-bottom:1.25rem;">
@@ -274,7 +267,8 @@ export class CompletudeComponent implements OnInit {
   selectedDateRas: string | null = null;   // admin/superviseur
   selectedPeriodId: number | null = null;  // pharmacien
   selectedProgrammeId: number | null = null;
-  selectedRegionIds: number[] = [];
+  /** Admin / superviseur : région choisie (null : toutes ses régions). */
+  selectedRegionId: number | null = null;
 
   expandedRegionId: number | null = null;
   selectedStructureIds: number[] = [];
@@ -301,29 +295,18 @@ export class CompletudeComponent implements OnInit {
       // Toutes les périodes de toutes les régions
       this.periodeService.getAllPeriodes().subscribe(periodes => {
         this.allPeriodes = periodes;
-        // Dates distinctes, ordre anti-chronologique conservé par l'API
-        const seen = new Set<string>();
-        this.periodDateOptions = [];
-        for (const p of periodes) {
-          if (!seen.has(p.dateRas)) {
-            seen.add(p.dateRas);
-            this.periodDateOptions.push({
-              dateRas: p.dateRas,
-              label: p.libelle ?? p.dateRas
-            });
-          }
-        }
-        if (this.periodDateOptions.length > 0) {
-          this.selectedDateRas = this.periodDateOptions[0].dateRas;
-        }
+        this.majDatesRas();
       });
 
-      if (this.auth.isAdmin()) {
-        this.referentielService.getRegions().subscribe(r => this.regions = r);
-      } else {
-        const supervisedIds = new Set(this.auth.supervisedRegionIds);
-        this.referentielService.getRegions().subscribe(r => this.regions = r.filter(x => supervisedIds.has(x.id)));
-      }
+      const supervisedIds = new Set(this.auth.supervisedRegionIds);
+      this.referentielService.getRegions().subscribe(r => {
+        this.regions = this.auth.isAdmin() ? r : r.filter(x => supervisedIds.has(x.id));
+        // Une seule région : inutile de passer par « toutes mes régions »
+        if (this.regions.length === 1) {
+          this.selectedRegionId = this.regions[0].id;
+          this.majDatesRas();
+        }
+      });
     } else {
       // Pharmacien : périodes de sa propre région
       this.periodeService.findByRegion().subscribe(periodes => {
@@ -361,12 +344,41 @@ export class CompletudeComponent implements OnInit {
     if (this.canLoad) this.load();
   }
 
+  /** Nouvelle région : on propose ses dates RAS, puis on recharge. */
+  onRegionChange(): void {
+    this.majDatesRas();
+    this.onFilterChange();
+  }
+
+  /**
+   * Dates RAS proposées : celles de la région choisie (avec leur statut), ou, pour toutes
+   * les régions, les dates distinctes. La date déjà choisie est gardée si elle existe encore.
+   */
+  private majDatesRas(): void {
+    const statut = (s: string) => s === 'OUVERTE' ? 'ouverte' : (s === 'FERMEE' ? 'fermée' : s.toLowerCase());
+    if (this.selectedRegionId) {
+      this.periodDateOptions = this.allPeriodes
+        .filter(p => p.regionId === this.selectedRegionId)
+        .map(p => ({ dateRas: p.dateRas, label: `${p.libelle ?? p.dateRas} · ${statut(p.statut)}` }));
+    } else {
+      const vues = new Set<string>();
+      this.periodDateOptions = [];
+      for (const p of this.allPeriodes) {        // ordre anti-chronologique de l'API
+        if (vues.has(p.dateRas)) continue;
+        vues.add(p.dateRas);
+        this.periodDateOptions.push({ dateRas: p.dateRas, label: p.libelle ?? p.dateRas });
+      }
+    }
+    if (!this.periodDateOptions.some(o => o.dateRas === this.selectedDateRas)) {
+      this.selectedDateRas = this.periodDateOptions[0]?.dateRas ?? null;
+    }
+  }
+
   load(): void {
     if (!this.selectedProgrammeId) return;
     this.loading = true;
     this.hasSearched = true;
-    this.completudes = [];
-    this.expandedRegionId = null;
+    // Les résultats affichés restent en place sous le voile de chargement jusqu'aux nouveaux
     this.selectedStructureIds = [];
     this.selectAll = false;
     this.searchManquantes = {};
@@ -379,13 +391,13 @@ export class CompletudeComponent implements OnInit {
   }
 
   private loadForAdminOrSuperviseur(): void {
-    if (!this.selectedDateRas) { this.loading = false; return; }
+    if (!this.selectedDateRas) { this.completudes = []; this.loading = false; return; }
 
-    const targetRegionIds = this.selectedRegionIds.length > 0
-      ? this.selectedRegionIds
+    const targetRegionIds = this.selectedRegionId
+      ? [this.selectedRegionId]
       : (this.auth.isAdmin() ? this.regions.map(r => r.id) : this.auth.supervisedRegionIds);
 
-    if (targetRegionIds.length === 0) { this.loading = false; return; }
+    if (targetRegionIds.length === 0) { this.completudes = []; this.loading = false; return; }
 
     // Pour chaque région cible, on cherche son periodeId correspondant à la date sélectionnée.
     // Les régions sans période pour cette date sont ignorées.
@@ -403,6 +415,7 @@ export class CompletudeComponent implements OnInit {
       .filter((c): c is RegionCall => c !== null);
 
     if (calls.length === 0) {
+      this.completudes = [];
       this.loading = false;
       return;
     }
@@ -413,6 +426,9 @@ export class CompletudeComponent implements OnInit {
       if (this.completudes.length === 1) {
         this.expandedRegionId = this.completudes[0].regionId;
       }
+      // Panneau resté ouvert : sa liste de sites manquants suit les nouveaux résultats
+      const ouvert = this.completudes.find(c => c.regionId === this.expandedRegionId);
+      if (ouvert) this.onPanelOpened(ouvert); else this.expandedRegionId = null;
       this.loading = false;
     });
   }
@@ -425,6 +441,7 @@ export class CompletudeComponent implements OnInit {
         next: data => {
           this.completudes = [data];
           this.expandedRegionId = data.regionId;
+          this.onPanelOpened(data);
           this.loading = false;
         },
         error: () => {

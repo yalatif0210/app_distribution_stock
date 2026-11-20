@@ -4,6 +4,31 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.4.0] - 2026-11-20
+
+### Modifié
+- Saisies (superviseur, admin) : on choisit d'abord la région, puis l'une de ses dates RAS,
+  avec leur statut, sur les écrans États de stock et Complétude. « Toutes mes régions »
+  propose les dates communes ; une région unique est choisie d'office. États de stock
+  affiche la région de chaque état.
+- Chargements : un voile avec un spinner se pose par-dessus la page au lieu de remplacer
+  son contenu ; l'écran ne saute plus à chaque changement. Les enregistrements automatiques
+  et le compteur de notifications restent discrets.
+
+### Ajouté
+- **Réceptions** : le site destinataire confirme ce qu'il reçoit (quantité, date, observation),
+  en une ou plusieurs fois ; la somme devient la quantité exécutée. Une réception peut être close
+  avec un écart motivé (casse, péremption, manquant, autre). Le site est prévenu à la validation
+  du plan, le pharmacien à chaque réception. La saisie du pharmacien passe par les mêmes règles :
+  plus de quantité supérieure à la quantité prévue (migration `V16`).
+- Statistiques : **délais d'exécution par région** sur une année (délai d'un plan, d'un
+  mouvement, plans en cours, quantités reçues, écarts), avec une ligne de référence pour
+  l'ensemble des régions et l'évolution mois par mois. Les délais partent désormais de la date
+  de réception.
+
+### Corrigé
+- États de stock : la pagination et le tri du tableau des résultats ne fonctionnaient pas.
+
 ## [1.3.1] - 2026-11-20
 
 ### Corrigé

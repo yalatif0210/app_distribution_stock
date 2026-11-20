@@ -47,6 +47,23 @@ public class LignePlan {
     @Column(name = "expire_date")
     private LocalDate expireDate;
 
+    /** Dernière date de réception par le site destinataire. */
+    @Column(name = "date_reception")
+    private LocalDate dateReception;
+
+    /** Réception close avec un écart : CASSE, PEREMPTION, MANQUANT ou AUTRE. */
+    @Column(name = "motif_ecart", length = 20)
+    private String motifEcart;
+
+    /**
+     * Date à laquelle le mouvement a été reçu : dernière réception confirmée, sinon date de
+     * saisie de l'exécution (lignes antérieures aux réceptions). Null si rien n'est reçu.
+     */
+    public LocalDate dateEffectiveReception() {
+        if (dateReception != null) return dateReception;
+        return dateExecution != null ? dateExecution.toLocalDate() : null;
+    }
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

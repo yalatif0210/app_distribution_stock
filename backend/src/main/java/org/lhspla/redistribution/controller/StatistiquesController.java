@@ -1,7 +1,9 @@
 package org.lhspla.redistribution.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.lhspla.redistribution.dto.response.DelaisDTO;
 import org.lhspla.redistribution.dto.response.StatistiquesDTO;
+import org.lhspla.redistribution.exception.BusinessException;
 import org.lhspla.redistribution.security.Perimetre;
 import org.lhspla.redistribution.security.PerimetreService;
 import org.lhspla.redistribution.service.StatistiquesExportService;
@@ -39,6 +41,18 @@ public class StatistiquesController {
             @RequestParam(required = false) Long regionId,
             @RequestParam(required = false) Long programmeId) {
         return ResponseEntity.ok(calculer(debut, fin, regionId, programmeId));
+    }
+
+    /**
+     * Délais d'exécution des plans validés dans l'année, comparés entre les régions du
+     * périmètre, avec une ligne de référence pour l'ensemble des régions.
+     */
+    @GetMapping("/delais")
+    public ResponseEntity<DelaisDTO> delais(
+            @RequestParam int annee,
+            @RequestParam(required = false) Long programmeId) {
+        if (annee < 2000 || annee > 2100) throw BusinessException.badRequest("Année invalide.");
+        return ResponseEntity.ok(statistiquesService.delais(annee, perimetreService.courant().regionsVisibles(), programmeId));
     }
 
     @GetMapping("/export/excel")

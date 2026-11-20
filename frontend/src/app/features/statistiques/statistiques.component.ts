@@ -10,7 +10,7 @@ import Chart from 'chart.js/auto';
 import { AuthService } from '../../core/auth/auth.service';
 import { ReferentielService } from '../../core/services/referentiel.service';
 import { FiltreStatistiques, Statistiques, StatistiquesService } from '../../core/services/statistiques.service';
-import { Programme, Region } from '../../core/models/models';
+import { Delais, Programme, Region } from '../../core/models/models';
 
 /**
  * Statistiques des plans de redéploiement validés sur une plage de dates (date de validation),
@@ -92,9 +92,8 @@ import { Programme, Region } from '../../core/models/models';
       </div>
     </div>
 
-    <div *ngIf="chargement" class="vide"><mat-spinner diameter="40" style="margin:0 auto .75rem;"></mat-spinner>Calcul en cours…</div>
 
-    <ng-container *ngIf="!chargement && stats as s">
+    <ng-container *ngIf="stats as s">
       <div class="entete">
         <h2>{{ s.niveau }}</h2>
         <span>Plans validés du {{ s.debut | date:'dd/MM/yyyy' }} au {{ s.fin | date:'dd/MM/yyyy' }} · {{ s.programme }}</span>
@@ -206,6 +205,88 @@ import { Programme, Region } from '../../core/models/models';
     <div *ngIf="!chargement && !stats" class="bloc vide">
       Choisissez une période de validation, puis « Calculer ».
     </div>
+
+    <!-- Délais d'exécution des plans, comparés entre régions -->
+    <div class="page-header" style="margin-top:2rem;">
+      <h1 style="font-size:1.2rem;">Délais d'exécution par région</h1>
+      <p>Du jour de validation d'un plan à la réception, par les sites destinataires, de tout ce qu'il prévoit</p>
+    </div>
+    <div class="filtres">
+      <div class="champ" style="min-width:120px;">
+        <label for="dl-annee">Année de validation</label>
+        <input id="dl-annee" type="number" min="2020" max="2100" [(ngModel)]="anneeDelais">
+      </div>
+      <div class="champ" style="min-width:220px;">
+        <label for="dl-programme">Programme</label>
+        <select id="dl-programme" [(ngModel)]="programmeDelais">
+          <option [ngValue]="null">Tous les programmes</option>
+          <option *ngFor="let p of programmes" [ngValue]="p.id">{{ p.nom }}</option>
+        </select>
+      </div>
+      <button mat-raised-button color="primary" (click)="calculerDelais()" [disabled]="!anneeDelais">
+        <mat-icon>timer</mat-icon> Comparer
+      </button>
+    </div>
+
+    <details class="bloc" style="padding:.6rem 1rem;font-size:.82rem;color:var(--text-secondary);">
+      <summary style="cursor:pointer;font-weight:600;color:var(--text-primary);">Comment ces délais sont calculés</summary>
+      <ul style="margin:.5rem 0 .25rem;padding-left:1.1rem;line-height:1.6;">
+        <li><b>Délai d'un plan</b> : jours entre sa validation et la dernière réception confirmée, une fois tous ses mouvements reçus (complets, ou clos par le site avec un écart). Un plan dont il reste des mouvements à recevoir est « en cours ».</li>
+        <li><b>Délai d'un mouvement</b> : jours entre la validation du plan et la réception complète du mouvement.</li>
+        <li><b>Âge des plans en cours</b> : jours écoulés depuis leur validation ; un âge élevé signale des livraisons qui traînent.</li>
+        <li><b>Quantités reçues</b> : somme des réceptions ÷ quantités prévues. Les écarts déclarés (casse, péremption, manquant) sont comptés à part.</li>
+        <li>La ligne <b>Ensemble des régions</b> sert de référence : elle réunit les plans de toutes les régions, sans en montrer le détail.</li>
+      </ul>
+    </details>
+
+    <ng-container *ngIf="delais as d">
+      <div class="bloc">
+        <h3>Plans validés en {{ d.annee }} · {{ d.programme }}</h3>
+        <div class="defile"><table>
+          <thead><tr>
+            <th>Région</th><th class="num">Plans</th><th class="num">Exécutés</th><th class="num">En cours</th>
+            <th class="num">Délai moyen d'un plan</th><th class="num">Médiane</th><th class="num">Plus court / plus long</th>
+            <th class="num">Délai moyen d'un mouvement</th><th class="num">Âge moyen des plans en cours</th>
+            <th class="num">Quantités reçues</th><th class="num">Écarts déclarés</th>
+          </tr></thead>
+          <tbody>
+            <tr *ngFor="let r of d.regions">
+              <td style="white-space:nowrap;">{{ r.region }}</td>
+              <ng-container *ngTemplateOutlet="cellulesDelais; context: { $implicit: r }"></ng-container>
+            </tr>
+            <tr style="background:rgba(79,70,229,.05);font-weight:600;">
+              <td style="white-space:nowrap;">{{ d.ensemble.region }}</td>
+              <ng-container *ngTemplateOutlet="cellulesDelais; context: { $implicit: d.ensemble }"></ng-container>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="deux" *ngIf="aDesDelais">
+        <div class="bloc">
+          <h3>Délai moyen d'exécution d'un plan (jours)</h3>
+          <div style="position:relative;padding:.75rem 1rem;" [style.height.px]="hauteurDelais"><canvas id="delaisRegionsChart"></canvas></div>
+        </div>
+        <div class="bloc">
+          <h3>Mois par mois, selon le mois de validation</h3>
+          <div style="position:relative;height:300px;padding:.75rem 1rem;"><canvas id="delaisMoisChart"></canvas></div>
+        </div>
+      </div>
+      <div *ngIf="!aDesDelais" class="bloc vide">Aucun plan entièrement reçu en {{ d.annee }} : pas encore de délai à comparer.</div>
+    </ng-container>
+
+    <ng-template #cellulesDelais let-r>
+      <td class="num">{{ r.nbPlans }}</td>
+      <td class="num">{{ r.nbPlansExecutes }}</td>
+      <td class="num">{{ r.nbPlansEnCours }}</td>
+      <td class="num"><strong>{{ jours(r.delaiMoyenPlanJours) }}</strong></td>
+      <td class="num">{{ jours(r.delaiMedianPlanJours) }}</td>
+      <td class="num">{{ r.delaiMinPlanJours !== null ? jours(r.delaiMinPlanJours) + ' / ' + jours(r.delaiMaxPlanJours) : '-' }}</td>
+      <td class="num">{{ jours(r.delaiMoyenMouvementJours) }}</td>
+      <td class="num" [style.color]="(r.ageMoyenEnCoursJours ?? 0) > 30 ? '#b45309' : null">{{ jours(r.ageMoyenEnCoursJours) }}</td>
+      <td class="num">{{ r.nbPlans ? (r.tauxQuantitesRecues | number:'1.0-1') + ' %' : '-' }}</td>
+      <td class="num">{{ r.nbReceptionsAvecEcart }}</td>
+    </ng-template>
   `
 })
 export class StatistiquesComponent implements OnInit, OnDestroy {
@@ -232,10 +313,93 @@ export class StatistiquesComponent implements OnInit, OnDestroy {
     }
     this.refService.getProgrammesGeres().subscribe(p => this.programmes = p);
     this.calculer();
+    this.calculerDelais();
   }
 
   ngOnDestroy(): void {
     this.graphe?.destroy();
+    this.grapheDelais?.destroy();
+    this.grapheDelaisMois?.destroy();
+  }
+
+  // ── Délais d'exécution par région ─────────────────────────────────────────
+  anneeDelais = new Date().getFullYear();
+  programmeDelais: number | null = null;
+  delais: Delais | null = null;
+  private grapheDelais: Chart | null = null;
+  private grapheDelaisMois: Chart | null = null;
+
+  get aDesDelais(): boolean {
+    return !!this.delais && this.delais.ensemble.nbPlansExecutes > 0;
+  }
+
+  get hauteurDelais(): number {
+    return Math.max(220, ((this.delais?.regions.length ?? 0) + 1) * 34 + 60);
+  }
+
+  jours(v: number | null | undefined): string {
+    return v === null || v === undefined ? '-' : v.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' j';
+  }
+
+  calculerDelais(): void {
+    if (!this.anneeDelais) return;
+    this.service.delais(this.anneeDelais, this.programmeDelais).subscribe({
+      next: d => { this.delais = d; setTimeout(() => this.dessinerDelais(), 50); },
+      error: err => this.snackBar.open(err.error?.message || 'Calcul des délais impossible.', 'Fermer', { duration: 5000 })
+    });
+  }
+
+  /** Délai moyen par région (barres, référence en gris) et évolution mois par mois (courbes). */
+  private dessinerDelais(): void {
+    this.grapheDelais?.destroy(); this.grapheDelais = null;
+    this.grapheDelaisMois?.destroy(); this.grapheDelaisMois = null;
+    const d = this.delais;
+    if (!d) return;
+    const palette = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777', '#7c3aed', '#ea580c', '#475569'];
+    const lignes = [...d.regions, d.ensemble];
+    const c1 = document.getElementById('delaisRegionsChart') as HTMLCanvasElement;
+    if (c1) {
+      this.grapheDelais = new Chart(c1, {
+        type: 'bar',
+        data: {
+          labels: lignes.map(r => r.region),
+          datasets: [{
+            label: 'Délai moyen d\'un plan (jours)',
+            data: lignes.map(r => r.delaiMoyenPlanJours),
+            backgroundColor: lignes.map((r, i) => r === d.ensemble ? '#94a3b8' : palette[i % palette.length])
+          }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c: any) => {
+            const r = lignes[c.dataIndex];
+            return ` ${this.jours(r.delaiMoyenPlanJours)} en moyenne, sur ${r.nbPlansExecutes} plan(s) exécuté(s)`;
+          } } } },
+          scales: { x: { beginAtZero: true, title: { display: true, text: 'jours' } } }
+        }
+      });
+    }
+    const c2 = document.getElementById('delaisMoisChart') as HTMLCanvasElement;
+    if (c2) {
+      const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+      this.grapheDelaisMois = new Chart(c2, {
+        type: 'line',
+        data: {
+          labels: mois,
+          datasets: d.regions.map((r, i) => ({
+            label: r.region,
+            data: d.parMois.map(m => m.delaiMoyenParRegion[r.region] ?? null),
+            borderColor: palette[i % palette.length], backgroundColor: palette[i % palette.length],
+            spanGaps: true, tension: .3, pointRadius: 4
+          }))
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom' } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: 'jours' } } }
+        }
+      });
+    }
   }
 
   private get filtre(): FiltreStatistiques {

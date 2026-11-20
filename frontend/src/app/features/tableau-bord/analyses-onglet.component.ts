@@ -71,12 +71,9 @@ const PALETTE_DISTRICTS = ['#4f46e5', '#0891b2', '#16a34a', '#ca8a04', '#db2777'
     svg text { font-family:inherit; }
   `],
   template: `
-    <div *ngIf="chargement" style="display:flex;align-items:center;justify-content:center;gap:.75rem;height:220px;color:var(--text-secondary);">
-      <mat-spinner diameter="36"></mat-spinner> Calcul des analyses…
-    </div>
     <div *ngIf="erreur" class="vide-msg" style="color:#b91c1c;">{{ erreur }}</div>
 
-    <ng-container *ngIf="!chargement && a">
+    <ng-container *ngIf="a">
       <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:1rem;">
         Chaque analyse se lit en trois temps : la visualisation, la <b>lecture</b> calculée par le Système à partir de barèmes
         réglés par l'administrateur, puis les actions <b>« À faire »</b>. « Après » le plan :

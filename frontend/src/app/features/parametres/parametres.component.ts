@@ -59,11 +59,8 @@ import { AnalysesService, Baremes } from '../../core/services/analyses.service';
             </mat-select>
           </mat-form-field>
 
-          <div *ngIf="loading" style="text-align:center; padding:2rem;">
-            <mat-spinner diameter="40" style="margin:auto;"></mat-spinner>
-          </div>
 
-          <ng-container *ngIf="!loading && parametre !== null">
+          <ng-container *ngIf="parametre !== null">
             <div style="margin-bottom:1rem; color:var(--text-secondary); font-size:.875rem;">
               <mat-icon style="font-size:1rem; vertical-align:middle; color:var(--accent-color);">location_on</mat-icon>
               Région : <strong>{{ parametre.regionNom }}</strong>
@@ -92,7 +89,7 @@ import { AnalysesService, Baremes } from '../../core/services/analyses.service';
           </ng-container>
         </mat-card-content>
 
-        <mat-card-actions align="end" style="padding:1rem 1.5rem;" *ngIf="!loading && parametre !== null">
+        <mat-card-actions align="end" style="padding:1rem 1.5rem;" *ngIf="parametre !== null">
           <button mat-stroked-button (click)="annuler()" [disabled]="saving">Annuler</button>
           <button mat-flat-button color="primary" (click)="sauvegarder()"
                   [disabled]="saving || editSeuil === null || editSeuil < 0.5 || editSeuil > 12"

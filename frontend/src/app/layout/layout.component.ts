@@ -4,6 +4,8 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { ChargementService } from '../core/http/chargement';
 import { AuthService } from '../core/auth/auth.service';
 import { NotificationService } from '../core/services/notification.service';
 
@@ -28,7 +30,8 @@ interface NavGroup {
     CommonModule,
     MatIconModule,
     MatButtonModule,
-    MatTooltipModule
+    MatTooltipModule,
+    MatProgressSpinnerModule
   ],
   styles: [`
     .nav-group-btn.open { color: var(--accent-color); background: rgba(79,70,229,.07); }
@@ -36,6 +39,13 @@ interface NavGroup {
     @keyframes dropIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
     .nav-chevron { transition: transform .2s ease; }
     .nav-chevron.open { transform: rotate(180deg); }
+    .zone-page { flex:1; min-height:0; position:relative; display:flex; flex-direction:column; }
+    .zone-page > .layout-page { flex:1; min-height:0; }
+    .voile-chargement { position:absolute; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+                        background:rgba(240,242,245,.55); backdrop-filter:blur(1px); cursor:progress; animation:voile .15s ease; }
+    .voile-boite { display:flex; flex-direction:column; align-items:center; gap:.6rem; padding:1.1rem 1.6rem; border-radius:.75rem;
+                   background:var(--bg-card, #fff); box-shadow:0 8px 24px rgba(15,23,42,.12); color:var(--text-secondary); font-size:.85rem; }
+    @keyframes voile { from { opacity:0; } to { opacity:1; } }
     .topbar-context-label { font-size:.7rem; color:var(--accent-color); font-weight:500; margin-top:.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px; }
   `],
   template: `
@@ -114,9 +124,18 @@ interface NavGroup {
       </header>
 
       <!-- Contenu -->
-      <main class="layout-page">
-        <router-outlet />
-      </main>
+      <!-- Zone de contenu : le voile de chargement se pose par-dessus, sans rien déplacer -->
+      <div class="zone-page">
+        <main class="layout-page">
+          <router-outlet />
+        </main>
+        <div *ngIf="chargement.visible()" class="voile-chargement" role="status" aria-live="polite">
+          <div class="voile-boite">
+            <mat-spinner diameter="40"></mat-spinner>
+            <span>Chargement…</span>
+          </div>
+        </div>
+      </div>
 
     </div>
   `
@@ -125,7 +144,7 @@ export class LayoutComponent implements OnInit {
   navGroups: NavGroup[] = [];
   openGroup: string | null = null;
 
-  constructor(public auth: AuthService, public notifService: NotificationService) {}
+  constructor(public auth: AuthService, public notifService: NotificationService, public chargement: ChargementService) {}
 
   ngOnInit(): void {
     this.notifService.refreshCount();

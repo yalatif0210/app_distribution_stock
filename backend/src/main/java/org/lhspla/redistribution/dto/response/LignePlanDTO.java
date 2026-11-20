@@ -21,6 +21,10 @@ public class LignePlanDTO {
     private String statut;
     private LocalDate expireDate;
     private LocalDateTime dateExecution;
+    /** Dernière date de réception confirmée par le site destinataire. */
+    private LocalDate dateReception;
+    /** Réception close avec un écart : CASSE, PEREMPTION, MANQUANT ou AUTRE. */
+    private String motifEcart;
     private String notes;
     private int progression;
 }

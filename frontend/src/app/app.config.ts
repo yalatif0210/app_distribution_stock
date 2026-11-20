@@ -4,12 +4,13 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { routes } from './app.routes';
 import { jwtInterceptor } from './core/auth/jwt.interceptor';
+import { chargementInterceptor } from './core/http/chargement';
 import { dedoublonnageInterceptor } from './core/http/dedoublonnage.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideHttpClient(withInterceptors([dedoublonnageInterceptor, jwtInterceptor])),
+    provideHttpClient(withInterceptors([chargementInterceptor, dedoublonnageInterceptor, jwtInterceptor])),
     provideAnimationsAsync()
   ]
 };

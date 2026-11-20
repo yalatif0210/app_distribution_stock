@@ -377,7 +377,7 @@ export class RepartitionManuelleComponent implements OnChanges, OnDestroy {
 
     if (qte <= 0) {
       if (!l.ligneId) { l.etat = 'vide'; l.message = ''; apres?.(); return; }
-      this.envoyer(l, this.planService.supprimerLigne(this.plan.id, l.ligneId), () => {
+      this.envoyer(l, this.planService.supprimerLigne(this.plan.id, l.ligneId, true), () => {
         const id = l.ligneId;
         l.ligneId = null; l.enregistre = null; l.etat = 'vide';
         this.publier((this.plan.lignes ?? []).filter(x => x.id !== id));
@@ -398,8 +398,8 @@ export class RepartitionManuelleComponent implements OnChanges, OnDestroy {
 
     const corps = { produitId, structureCibleId: l.cibleId, structureSourceId: l.sourceId, quantiteProposee: qte } as Partial<LignePlan>;
     const requete = l.ligneId
-      ? this.planService.modifierLigne(this.plan.id, l.ligneId, corps)
-      : this.planService.ajouterLigne(this.plan.id, corps);
+      ? this.planService.modifierLigne(this.plan.id, l.ligneId, corps, true)
+      : this.planService.ajouterLigne(this.plan.id, corps, true);
     this.envoyer(l, requete, (ligne: LignePlan) => {
       l.ligneId = ligne.id; l.enregistre = signature; l.etat = 'ok';
       const autres = (this.plan.lignes ?? []).filter(x => x.id !== ligne.id);

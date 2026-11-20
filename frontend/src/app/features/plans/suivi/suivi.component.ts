@@ -19,7 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { PlanService } from '../../../core/services/plan.service';
 import { ReferentielService } from '../../../core/services/referentiel.service';
 import { AuthService } from '../../../core/auth/auth.service';
-import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/models/models';
+import { LignePlan, PeriodeSaisie, PlanReattribution, Reception } from '../../../core/models/models';
 
 @Component({
   selector: 'app-suivi',
@@ -79,14 +79,9 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
       </mat-card-content>
     </mat-card>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay">
-      <mat-spinner diameter="48"></mat-spinner>
-      <span>Chargement des plans…</span>
-    </div>
 
     <!-- Plans list -->
-    <ng-container *ngIf="!loading">
+    <ng-container>
       <ng-container *ngFor="let plan of plansPage">
         <mat-card style="margin-bottom:1rem;cursor:pointer;" (click)="togglePlan(plan)">
           <mat-card-header style="padding:.875rem 1rem;">
@@ -118,11 +113,8 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
                 <strong style="color:var(--text-primary);">Analyse IA :</strong> {{ plan.resumeIa }}
               </div>
 
-              <div *ngIf="detailLoading[plan.id]" class="loading-overlay" style="height:120px;">
-                <mat-spinner diameter="32"></mat-spinner>
-              </div>
 
-              <ng-container *ngIf="!detailLoading[plan.id] && planDetail[plan.id]">
+              <ng-container *ngIf="planDetail[plan.id]">
                 <div style="padding:.5rem 1rem .25rem;">
                   <mat-form-field appearance="outline" style="width:100%;">
                     <mat-label>Filtrer les lignes</mat-label>
@@ -153,6 +145,11 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
                       <mat-progress-bar mode="determinate" [value]="l.progression" style="width:60px;" [color]="l.statut === 'EXECUTE' ? 'primary' : 'accent'"></mat-progress-bar>
                       <span style="font-family:monospace;font-size:.875rem;">{{ l.quantiteExecutee | number:'1.0-0' }}</span>
                     </div>
+                    <div *ngIf="l.dateReception" style="font-size:.7rem;color:var(--text-secondary);margin-top:.15rem;">
+                      reçu le {{ l.dateReception | date:'dd/MM/yyyy' }}
+                    </div>
+                    <span *ngIf="l.motifEcart" class="badge badge-tension" style="font-size:.62rem;"
+                          matTooltip="Réception close avec un écart">écart : {{ libelleMotif(l.motifEcart) }}</span>
                   </td>
                 </ng-container>
                 <ng-container matColumnDef="unite">
@@ -176,6 +173,19 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
                       style="font-size:.75rem;height:30px;padding:0 .75rem;"
                     >
                       <mat-icon style="font-size:14px;width:14px;height:14px;">edit</mat-icon> Mettre à jour
+                    </button>
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      *ngIf="peutReceptionner(plan, l)"
+                      (click)="ouvrirReception(plan, l)"
+                      style="font-size:.75rem;height:30px;padding:0 .75rem;"
+                    >
+                      <mat-icon style="font-size:14px;width:14px;height:14px;">inventory</mat-icon> Confirmer la réception
+                    </button>
+                    <button mat-icon-button *ngIf="l.quantiteExecutee > 0" (click)="ouvrirReception(plan, l)"
+                            matTooltip="Historique des réceptions" aria-label="Historique des réceptions">
+                      <mat-icon style="font-size:18px;width:18px;height:18px;">history</mat-icon>
                     </button>
                   </td>
                 </ng-container>
@@ -211,6 +221,75 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
       </div>
     </ng-container>
 
+    <!-- Réception par le site destinataire -->
+    <ng-template #receptionDialog>
+      <h2 mat-dialog-title>{{ recModal && peutReceptionner(recModal.plan, recModal.ligne) ? 'Confirmer la réception' : 'Réceptions' }}</h2>
+      <mat-dialog-content style="min-width:380px;padding-top:.5rem;" *ngIf="recModal as m">
+        <p style="color:var(--text-secondary);font-size:.85rem;margin:0 0 .5rem;">
+          {{ m.ligne.produitNom }} · {{ m.ligne.structureSourceNom }} → {{ m.ligne.structureCibleNom }}
+        </p>
+        <div style="display:flex;gap:1.25rem;font-size:.85rem;margin-bottom:.75rem;">
+          <span>Prévu : <strong>{{ m.ligne.quantiteProposee | number:'1.0-2' }}</strong> {{ m.ligne.produitUnite }}</span>
+          <span>Déjà reçu : <strong>{{ m.ligne.quantiteExecutee | number:'1.0-2' }}</strong></span>
+          <span *ngIf="m.ligne.statut !== 'EXECUTE'">Reste : <strong style="color:var(--accent-color);">{{ resteARecevoir(m.ligne) | number:'1.0-2' }}</strong></span>
+          <span *ngIf="m.ligne.statut === 'EXECUTE' && resteARecevoir(m.ligne) > 0">Écart définitif : <strong style="color:#b45309;">{{ resteARecevoir(m.ligne) | number:'1.0-2' }}</strong></span>
+        </div>
+
+        <div *ngIf="recHistorique.length" style="margin-bottom:1rem;">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:.3rem;">Réceptions enregistrées</div>
+          <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
+            <tr *ngFor="let h of recHistorique" style="border-bottom:1px solid var(--border-color);">
+              <td style="padding:.3rem 0;">{{ h.dateReception | date:'dd/MM/yyyy' }}</td>
+              <td style="padding:.3rem .5rem;text-align:right;font-family:monospace;">{{ h.quantite | number:'1.0-2' }}</td>
+              <td style="padding:.3rem 0;color:var(--text-secondary);">{{ h.saisiPar === 'reprise' ? 'saisie avant les réceptions' : 'par ' + h.saisiPar }}
+                <span *ngIf="h.motifEcart" class="badge badge-tension" style="font-size:.6rem;">écart : {{ libelleMotif(h.motifEcart) }}</span>
+                <div *ngIf="h.notes" style="font-style:italic;">{{ h.notes }}</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <ng-container *ngIf="peutReceptionner(m.plan, m.ligne)">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+            <mat-form-field appearance="fill">
+              <mat-label>Quantité reçue</mat-label>
+              <input matInput type="number" min="0" [max]="resteARecevoir(m.ligne)" [(ngModel)]="recQte">
+              <mat-hint>Cette livraison</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="fill">
+              <mat-label>Date de réception</mat-label>
+              <input matInput type="date" [(ngModel)]="recDate" [min]="dateMinReception(m.plan)" [max]="aujourdhui">
+            </mat-form-field>
+          </div>
+          <label *ngIf="recQte != null && recQte < resteARecevoir(m.ligne)"
+                 style="display:flex;align-items:flex-start;gap:.5rem;font-size:.85rem;margin:.75rem 0 .5rem;cursor:pointer;">
+            <input type="checkbox" [(ngModel)]="recTerminee" style="margin-top:.2rem;">
+            <span>Plus rien n'est attendu : clore la réception avec un écart de
+              <strong>{{ resteARecevoir(m.ligne) - (recQte || 0) | number:'1.0-2' }}</strong> {{ m.ligne.produitUnite }}</span>
+          </label>
+          <mat-form-field *ngIf="recTerminee && recQte != null && recQte < resteARecevoir(m.ligne)" appearance="fill" style="width:100%;">
+            <mat-label>Motif de l'écart</mat-label>
+            <mat-select [(ngModel)]="recMotif">
+              <mat-option *ngFor="let mo of motifs" [value]="mo.code">{{ mo.libelle }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="fill" style="width:100%;">
+            <mat-label>Observation (facultatif)</mat-label>
+            <textarea matInput [(ngModel)]="recNotes" rows="2" maxlength="1000"></textarea>
+          </mat-form-field>
+          <div *ngIf="recErreur" style="color:#dc2626;font-size:.85rem;">{{ recErreur }}</div>
+        </ng-container>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button (click)="fermerReception()">{{ recModal && peutReceptionner(recModal.plan, recModal.ligne) ? 'Annuler' : 'Fermer' }}</button>
+        <button *ngIf="recModal && peutReceptionner(recModal.plan, recModal.ligne)" mat-raised-button color="primary"
+                (click)="enregistrerReception()" [disabled]="recSaving || !receptionValide">
+          <mat-spinner *ngIf="recSaving" diameter="18" style="display:inline-block;margin-right:.4rem;"></mat-spinner>
+          Confirmer
+        </button>
+      </mat-dialog-actions>
+    </ng-template>
+
     <!-- Execution dialog template -->
     <ng-template #execDialog>
       <h2 mat-dialog-title>Enregistrer l'exécution</h2>
@@ -219,7 +298,8 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
         <p style="margin:0 0 1.25rem;font-size:.875rem;">Quantité proposée : <strong style="color:var(--accent-color);">{{ execModal.ligne.quantiteProposee }}</strong></p>
         <mat-form-field appearance="fill" style="width:100%;margin-bottom:.5rem;">
           <mat-label>Quantité exécutée</mat-label>
-          <input matInput type="number" min="0" [(ngModel)]="execQte">
+          <input matInput type="number" min="0" [max]="execModal.ligne.quantiteProposee" [(ngModel)]="execQte">
+          <mat-hint>Total livré, au plus la quantité proposée ; ne peut pas descendre sous les réceptions déjà confirmées</mat-hint>
         </mat-form-field>
         <mat-form-field appearance="fill" style="width:100%;">
           <mat-label>Notes</mat-label>
@@ -243,6 +323,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution } from '../../../core/model
 })
 export class SuiviComponent implements OnInit {
   @ViewChild('execDialog') execDialogRef!: TemplateRef<any>;
+  @ViewChild('receptionDialog') receptionDialogRef!: TemplateRef<any>;
   @ViewChild('pagLignesSuivi') pagLignesSuivi?: MatPaginator;
   @ViewChild('sortLignesSuivi') sortLignesSuivi?: MatSort;
 
@@ -386,12 +467,110 @@ export class SuiviComponent implements OnInit {
         this.execModal = null;
         this.execSaving = false;
         this.snackBar.open('Exécution enregistrée.', 'OK', { duration: 3000 });
-        this.charger();
+        this.rafraichirPlan(modal.plan.id);
       },
-      error: () => {
+      error: err => {
         this.execSaving = false;
-        this.snackBar.open('Erreur lors de l\'enregistrement.', 'Fermer', { duration: 4000 });
+        this.snackBar.open(err.error?.message || 'Erreur lors de l\'enregistrement.', 'Fermer', { duration: 5000 });
       }
+    });
+  }
+
+  // ── Réception par le site destinataire ─────────────────────────────────────
+  readonly motifs = [
+    { code: 'CASSE', libelle: 'Casse' }, { code: 'PEREMPTION', libelle: 'Péremption' },
+    { code: 'MANQUANT', libelle: 'Manquant à la livraison' }, { code: 'AUTRE', libelle: 'Autre' }
+  ];
+  readonly aujourdhui = new Date().toISOString().slice(0, 10);
+  recModal: { plan: PlanReattribution; ligne: LignePlan } | null = null;
+  recHistorique: Reception[] = [];
+  recQte: number | null = null;
+  recDate = this.aujourdhui;
+  recTerminee = false;
+  recMotif: string | null = null;
+  recNotes = '';
+  recSaving = false;
+  recErreur = '';
+
+  /** Seul le site destinataire confirme sa réception, sur un plan validé et un mouvement ouvert. */
+  peutReceptionner(plan: PlanReattribution, l: LignePlan): boolean {
+    return this.auth.isGestionnaire() && this.auth.structureId === l.structureCibleId
+      && plan.statut !== 'BROUILLON' && l.statut !== 'EXECUTE' && l.statut !== 'ANNULE';
+  }
+
+  resteARecevoir(l: LignePlan): number {
+    return Math.max(0, Math.round(((l.quantiteProposee ?? 0) - (l.quantiteExecutee ?? 0)) * 100) / 100);
+  }
+
+  dateMinReception(plan: PlanReattribution): string | null {
+    return plan.dateValidation ? String(plan.dateValidation).slice(0, 10) : null;
+  }
+
+  libelleMotif(code: string): string {
+    return this.motifs.find(m => m.code === code)?.libelle.toLowerCase() ?? code.toLowerCase();
+  }
+
+  get receptionValide(): boolean {
+    const m = this.recModal;
+    if (!m || this.recQte == null || this.recQte <= 0 || !this.recDate) return false;
+    if (this.recQte > this.resteARecevoir(m.ligne)) return false;
+    const ecart = this.recQte < this.resteARecevoir(m.ligne);
+    return !(this.recTerminee && ecart && !this.recMotif);
+  }
+
+  ouvrirReception(plan: PlanReattribution, ligne: LignePlan): void {
+    this.recModal = { plan, ligne };
+    this.recHistorique = [];
+    this.recQte = this.resteARecevoir(ligne) || null;
+    this.recDate = this.aujourdhui;
+    this.recTerminee = false;
+    this.recMotif = null;
+    this.recNotes = '';
+    this.recErreur = '';
+    this.planService.receptions(plan.id, ligne.id).subscribe(h => this.recHistorique = h);
+    this.dialog.open(this.receptionDialogRef, { width: '520px' });
+  }
+
+  fermerReception(): void {
+    this.dialog.closeAll();
+    this.recModal = null;
+  }
+
+  enregistrerReception(): void {
+    const m = this.recModal;
+    if (!m || !this.receptionValide) return;
+    const ecart = this.recQte! < this.resteARecevoir(m.ligne);
+    this.recSaving = true;
+    this.recErreur = '';
+    this.planService.receptionner(m.plan.id, m.ligne.id, {
+      quantite: this.recQte!, dateReception: this.recDate,
+      terminee: this.recTerminee && ecart, motifEcart: this.recTerminee && ecart ? this.recMotif : null,
+      notes: this.recNotes.trim() || null
+    }).subscribe({
+      next: l => {
+        this.recSaving = false;
+        this.fermerReception();
+        this.snackBar.open(l.statut === 'EXECUTE' ? 'Réception confirmée : mouvement terminé.' : 'Réception enregistrée.', 'OK', { duration: 3500 });
+        this.rafraichirPlan(m.plan.id);
+      },
+      error: err => {
+        this.recSaving = false;
+        this.recErreur = err.error?.message || 'La réception n\'a pas pu être enregistrée.';
+      }
+    });
+  }
+
+  /** Recharge le détail d'un plan ouvert (lignes et avancement) après une réception ou une exécution. */
+  private rafraichirPlan(planId: number): void {
+    this.planService.getPlan(planId).subscribe(detail => {
+      this.planDetail[planId] = detail;
+      if (this.expandedPlanId === planId) this.dsLignesSuivi.data = detail.lignes ?? [];
+      const maj = (liste: PlanReattribution[]) => {
+        const i = liste.findIndex(p => p.id === planId);
+        if (i >= 0) liste[i] = { ...liste[i], ...detail };
+      };
+      maj(this.plans);
+      maj(this.plansFiltres);
     });
   }
 

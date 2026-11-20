@@ -89,13 +89,8 @@ import {
       </mat-card-content>
     </mat-card>
 
-    <!-- Loading -->
-    <div *ngIf="loading" class="loading-overlay" style="height:300px;">
-      <mat-spinner diameter="56"></mat-spinner>
-      <span>Chargement des données…</span>
-    </div>
 
-    <ng-container *ngIf="!loading && data">
+    <ng-container *ngIf="data">
 
       <!-- Identification du plan affiché -->
       <div *ngIf="planAffiche as pl" role="note" aria-label="Plan affiché"
@@ -558,10 +553,7 @@ import {
               <!-- Table lignes -->
               <div>
                 <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem;">Détail des lignes du plan</div>
-                <div *ngIf="loadingLines" style="text-align:center;padding:2rem;color:var(--text-secondary);">
-                  <mat-spinner diameter="32" style="margin:0 auto;"></mat-spinner>
-                </div>
-                <ng-container *ngIf="!loadingLines && planDetails">
+                <ng-container *ngIf="planDetails">
                   <div style="padding:.25rem 0 .5rem;">
                     <mat-form-field appearance="outline" style="width:100%;">
                       <mat-label>Filtrer</mat-label>
@@ -781,11 +773,8 @@ import {
         </mat-card-content>
       </mat-card>
 
-      <div *ngIf="loadingProgression" class="loading-overlay" style="height:200px;">
-        <mat-spinner diameter="40"></mat-spinner>
-      </div>
 
-      <mat-card *ngIf="!loadingProgression">
+      <mat-card>
         <mat-card-content>
           <div *ngIf="erreurProgression" style="text-align:center;padding:2rem;color:#b91c1c;font-size:.875rem;">
             <mat-icon style="font-size:2rem;width:2rem;height:2rem;display:block;margin:0 auto .5rem;">error_outline</mat-icon>
@@ -1029,25 +1018,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!this.selectedPeriodId || !this.selectedProgrammeId || !this.selectedPlanId) return;
     // Nouvelle analyse : base par défaut (exécutée si le plan est validé)
     if (nouveauPlan) this.baseApres = null;
+    // L'ancien tableau de bord reste affiché sous le voile de chargement jusqu'à l'arrivée du nouveau
     this.loading = true;
-    this.data = null;
-    this.planDetails = null;
-    this.charge = { periodeId: this.selectedPeriodId, programmeId: this.selectedProgrammeId, planId: this.selectedPlanId };
-    if (nouveauPlan) this.chargerTendances();
-    this.dsMsd.data = [];
-    this.dsRuptures.data = [];
-    this.dsDisponibilites.data = [];
-    this.dsLignesPlan.data = [];
-    this.dsTop5.data = [];
-    this.destroyCharts();
+    const demande = { periodeId: this.selectedPeriodId, programmeId: this.selectedProgrammeId, planId: this.selectedPlanId };
     this.tbService.getTableauBord(
-      this.selectedPeriodId,
-      this.selectedProgrammeId,
-      this.selectedPlanId,
+      demande.periodeId,
+      demande.programmeId,
+      demande.planId,
       undefined,
       this.baseApres ?? undefined
     ).subscribe({
       next: (d) => {
+        this.charge = demande;
+        if (nouveauPlan) this.chargerTendances();
         this.data = d;
         this.dsMsd.data = d.evolutionMsd;
         this.dsRuptures.data = d.evolutionRuptures;
@@ -1098,8 +1081,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadProgression(): void {
+    // Le graphique en place reste visible pendant le rechargement : il est remplacé à l'arrivée des données
     this.loadingProgression = true;
-    if (this.progressionChart) { this.progressionChart.destroy(); this.progressionChart = null; }
     // Pas de région envoyée : le serveur applique lui-même le périmètre de l'utilisateur
     // (sa région, ses régions, ou toutes pour l'admin), même si la session est ancienne.
     const regionFilter = null;

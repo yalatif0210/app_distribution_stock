@@ -74,7 +74,7 @@ Voir le [guide des indicateurs](indicateurs.md#statut-du-stock) et, pour les bar
 
 **Plans → Suivi des plans** : les plans validés et clôturés de toutes les régions, avec impression d'un plan ou d'une période. Vous seul pouvez **supprimer un mouvement ou un plan déjà validé**. Faites-le avec précaution, l'opération est définitive.
 
-**Tableau de bord** et **Analyse → États de stock** : mêmes écrans que le pharmacien de région, pour toutes les régions.
+**Tableau de bord** et **Analyse → États de stock** : mêmes écrans que le pharmacien de région, pour toutes les régions. Dans États de stock, choisissez d'abord la région, puis l'une de ses dates RAS ; « Toutes les régions » réunit les états de chaque région qui a la date choisie.
 
 ## 4. Les statistiques nationales
 
@@ -83,6 +83,8 @@ Voir le [guide des indicateurs](indicateurs.md#statut-du-stock) et, pour les bar
 - Choisissez une région pour la regarder seule.
 
 Exports **Excel** (un onglet par tableau) et **PDF**.
+
+**Délais d'exécution par région**, en bas de la page : choisissez une **année de validation** et, au besoin, un programme, puis **Comparer**. Pour chaque région : plans validés, exécutés et en cours, délai moyen et médian d'exécution d'un plan, délai moyen d'un mouvement, ancienneté des plans en cours, part des quantités reçues et écarts déclarés. La ligne **« Ensemble des régions »** sert de référence ; deux graphiques comparent les régions et suivent les délais mois par mois.
 
 ## 5. Base de données
 

@@ -3,6 +3,7 @@ package org.lhspla.redistribution.service;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.lhspla.redistribution.dto.request.ExecutionRequest;
+import org.lhspla.redistribution.dto.request.ReceptionRequest;
 import org.lhspla.redistribution.entity.*;
 import org.lhspla.redistribution.exception.BusinessException;
 import org.lhspla.redistribution.repository.*;
@@ -12,6 +13,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +29,7 @@ class PlanReattributionServiceTest {
 
     @Mock private PlanReattributionRepository planRepo;
     @Mock private LignePlanRepository ligneRepo;
+    @Mock private ReceptionLigneRepository receptionRepo;
     @Mock private PeriodeSaisieRepository periodeRepo;
     @Mock private ProgrammeRepository programmeRepo;
     @Mock private RegionRepository regionRepo;
@@ -165,95 +169,153 @@ class PlanReattributionServiceTest {
                 .hasMessageContaining("clôturé");
     }
 
-    // ── executerLigne : préconditions ────────────────────────────────────────────
+    // ── executerLigne (saisie du total par le pharmacien) ───────────────────────
 
     @Test
     void executerLigne_refuse_si_plan_est_en_brouillon() {
         PlanReattribution plan = planAvecStatut("BROUILLON");
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
         lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
 
-        ExecutionRequest req = executionRequest("80", null);
-
-        assertThatThrownBy(() -> service.executerLigne(1L, 1L, req))
+        assertThatThrownBy(() -> service.executerLigne(1L, 1L, executionRequest("80", null), "pharma"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("validé");
     }
 
-    // ── executerLigne : transitions de statut ────────────────────────────────────
-
     @Test
     void executerLigne_passe_a_EXECUTE_quand_quantite_atteint_proposee() {
-        PlanReattribution plan = planAvecStatut("VALIDE");
-        LignePlan ligne = ligneAvecQuantiteProposee("100");
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
-        when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
+        LignePlan ligne = preparerLigne("100");
 
-        ExecutionRequest req = executionRequest("100", "Livraison complète");
-        service.executerLigne(1L, 1L, req);
+        service.executerLigne(1L, 1L, executionRequest("100", "Livraison complète"), "pharma");
 
-        ArgumentCaptor<LignePlan> captor = ArgumentCaptor.forClass(LignePlan.class);
-        verify(ligneRepo).save(captor.capture());
-        assertThat(captor.getValue().getStatut()).isEqualTo("EXECUTE");
+        assertThat(ligne.getStatut()).isEqualTo("EXECUTE");
+        assertThat(ligne.getQuantiteExecutee()).isEqualByComparingTo("100");
+        assertThat(ligne.getDateReception()).isEqualTo(LocalDate.now());
+        verify(receptionRepo).save(any(ReceptionLigne.class));
     }
 
     @Test
-    void executerLigne_passe_a_EXECUTE_quand_quantite_depasse_proposee() {
-        PlanReattribution plan = planAvecStatut("VALIDE");
-        LignePlan ligne = ligneAvecQuantiteProposee("100");
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
-        when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
+    void executerLigne_refuse_une_quantite_superieure_a_la_proposee() {
+        preparerLigne("100");
 
-        ExecutionRequest req = executionRequest("110", null);
-        service.executerLigne(1L, 1L, req);
-
-        ArgumentCaptor<LignePlan> captor = ArgumentCaptor.forClass(LignePlan.class);
-        verify(ligneRepo).save(captor.capture());
-        assertThat(captor.getValue().getStatut()).isEqualTo("EXECUTE");
+        assertThatThrownBy(() -> service.executerLigne(1L, 1L, executionRequest("110", null), "pharma"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("dépasser");
     }
 
     @Test
     void executerLigne_passe_a_PARTIEL_quand_quantite_inferieure_a_proposee() {
-        PlanReattribution plan = planAvecStatut("VALIDE");
-        LignePlan ligne = ligneAvecQuantiteProposee("100");
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
-        when(ligneRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
+        LignePlan ligne = preparerLigne("100");
 
-        ExecutionRequest req = executionRequest("60", "Livraison partielle - rupture de transport");
-        service.executerLigne(1L, 1L, req);
+        service.executerLigne(1L, 1L, executionRequest("60", "Livraison partielle"), "pharma");
 
-        ArgumentCaptor<LignePlan> captor = ArgumentCaptor.forClass(LignePlan.class);
-        verify(ligneRepo).save(captor.capture());
-        assertThat(captor.getValue().getStatut()).isEqualTo("PARTIEL");
+        assertThat(ligne.getStatut()).isEqualTo("PARTIEL");
+    }
+
+    @Test
+    void executerLigne_refuse_de_descendre_sous_les_receptions_confirmees() {
+        LignePlan ligne = preparerLigne("100");
+        ligne.setQuantiteExecutee(new BigDecimal("50"));
+        ligne.setStatut("PARTIEL");
+
+        assertThatThrownBy(() -> service.executerLigne(1L, 1L, executionRequest("30", null), "pharma"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("déjà confirmé");
+    }
+
+    // ── receptionner (confirmation par le site destinataire) ────────────────────
+
+    @Test
+    void reception_du_site_cumule_et_clot_la_ligne_quand_tout_est_recu() {
+        LignePlan ligne = preparerLigne("100");
+        siteConnecte(10L);
+
+        service.receptionner(1L, 1L, reception("40", false, null), "gest");
+        assertThat(ligne.getStatut()).isEqualTo("PARTIEL");
+        assertThat(ligne.getQuantiteExecutee()).isEqualByComparingTo("40");
+
+        service.receptionner(1L, 1L, reception("60", false, null), "gest");
+        assertThat(ligne.getStatut()).isEqualTo("EXECUTE");
+        assertThat(ligne.getQuantiteExecutee()).isEqualByComparingTo("100");
+        verify(notificationService, times(2)).notifierReception(any(), any(), any());
+    }
+
+    @Test
+    void reception_refuse_un_cumul_superieur_a_la_quantite_prevue() {
+        LignePlan ligne = preparerLigne("100");
+        ligne.setQuantiteExecutee(new BigDecimal("80"));
+        ligne.setStatut("PARTIEL");
+        siteConnecte(10L);
+
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, reception("30", false, null), "gest"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("plus que la quantité prévue");
+    }
+
+    @Test
+    void reception_close_avec_ecart_exige_un_motif() {
+        preparerLigne("100");
+        siteConnecte(10L);
+
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, reception("70", true, null), "gest"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("motif");
+    }
+
+    @Test
+    void reception_close_avec_ecart_passe_a_EXECUTE_et_garde_le_motif() {
+        LignePlan ligne = preparerLigne("100");
+        siteConnecte(10L);
+
+        service.receptionner(1L, 1L, reception("70", true, "casse"), "gest");
+
+        assertThat(ligne.getStatut()).isEqualTo("EXECUTE");
+        assertThat(ligne.getQuantiteExecutee()).isEqualByComparingTo("70");
+        assertThat(ligne.getMotifEcart()).isEqualTo("CASSE");
+    }
+
+    @Test
+    void reception_refusee_pour_un_autre_site_que_le_destinataire() {
+        preparerLigne("100");
+        siteConnecte(99L);
+
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, reception("10", false, null), "gest"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("site destinataire");
+    }
+
+    @Test
+    void reception_refuse_une_date_future_ou_anterieure_a_la_validation() {
+        preparerLigne("100");
+        siteConnecte(10L);
+        ReceptionRequest futur = reception("10", false, null);
+        futur.setDateReception(LocalDate.now().plusDays(1));
+        ReceptionRequest avant = reception("10", false, null);
+        avant.setDateReception(LocalDate.now().minusDays(30));
+
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, futur, "gest")).hasMessageContaining("futur");
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, avant, "gest")).hasMessageContaining("précéder");
+    }
+
+    @Test
+    void reception_refusee_sur_une_ligne_deja_close() {
+        LignePlan ligne = preparerLigne("100");
+        ligne.setStatut("EXECUTE");
+        siteConnecte(10L);
+
+        assertThatThrownBy(() -> service.receptionner(1L, 1L, reception("10", false, null), "gest"))
+                .hasMessageContaining("déjà close");
     }
 
     // ── verifierCloturePlan : auto-clôture ───────────────────────────────────────
 
     @Test
     void plan_passe_a_CLOTURE_quand_toutes_les_lignes_sont_executees() {
-        PlanReattribution plan = planAvecStatut("VALIDE");
-        LignePlan l1 = ligneAvecStatut("EXECUTE");
+        LignePlan l1 = preparerLigne("100");
         LignePlan l2 = ligneAvecStatut("EXECUTE");
-
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findById(1L)).thenReturn(Optional.of(l1));
-        when(ligneRepo.save(any(LignePlan.class))).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(l1, l2));
         when(planRepo.save(any(PlanReattribution.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ExecutionRequest req = executionRequest("100", null);
-        l1.setQuantiteProposee(new BigDecimal("100"));
-        service.executerLigne(1L, 1L, req);
+        service.executerLigne(1L, 1L, executionRequest("100", null), "pharma");
 
         ArgumentCaptor<PlanReattribution> planCaptor = ArgumentCaptor.forClass(PlanReattribution.class);
         verify(planRepo).save(planCaptor.capture());
@@ -262,23 +324,53 @@ class PlanReattributionServiceTest {
 
     @Test
     void plan_reste_valide_si_au_moins_une_ligne_non_terminee() {
-        PlanReattribution plan = planAvecStatut("VALIDE");
-        plan.setId(1L);
-        LignePlan l1 = ligneAvecStatut("EXECUTE");
+        LignePlan l1 = preparerLigne("100");
         LignePlan l2 = ligneAvecStatut("EN_ATTENTE"); // pas encore terminée
-
-        lenient().when(planRepo.findById(1L)).thenReturn(Optional.of(plan));
-        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
-        when(ligneRepo.findById(1L)).thenReturn(Optional.of(l1));
-        when(ligneRepo.save(any(LignePlan.class))).thenAnswer(inv -> inv.getArgument(0));
         when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(l1, l2));
 
-        l1.setQuantiteProposee(new BigDecimal("100"));
-        ExecutionRequest req = executionRequest("100", null);
-        service.executerLigne(1L, 1L, req);
+        service.executerLigne(1L, 1L, executionRequest("100", null), "pharma");
 
         // planRepo.save ne doit pas être appelé (pas de clôture)
         verify(planRepo, never()).save(any());
+    }
+
+    /** Plan validé il y a 10 jours, ligne en attente vers le site 10. */
+    private LignePlan preparerLigne(String prevu) {
+        PlanReattribution plan = planAvecStatut("VALIDE");
+        plan.setDateValidation(LocalDateTime.now().minusDays(10));
+        LignePlan ligne = ligneAvecQuantiteProposee(prevu);
+        ligne.setPlan(plan);
+        Structure cible = new Structure();
+        cible.setId(10L);
+        cible.setNom("CSB destinataire");
+        ligne.setStructureCible(cible);
+        Produit produit = new Produit();
+        produit.setNom("Produit test");
+        produit.setUnite("boîte");
+        ligne.setProduit(produit);
+        lenient().when(planRepo.verrouiller(1L)).thenReturn(Optional.of(plan));
+        lenient().when(ligneRepo.findById(1L)).thenReturn(Optional.of(ligne));
+        lenient().when(ligneRepo.save(any(LignePlan.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(ligneRepo.findByPlanId(1L)).thenReturn(List.of(ligne));
+        return ligne;
+    }
+
+    /** Gestionnaire connecté, rattaché à la structure donnée. */
+    private void siteConnecte(Long structureId) {
+        Utilisateur u = utilisateurAvecRole("GESTIONNAIRE");
+        Structure s = new Structure();
+        s.setId(structureId);
+        u.setStructure(s);
+        lenient().when(utilisateurRepo.findByUsername("gest")).thenReturn(Optional.of(u));
+    }
+
+    private ReceptionRequest reception(String quantite, boolean terminee, String motif) {
+        ReceptionRequest r = new ReceptionRequest();
+        r.setQuantite(new BigDecimal(quantite));
+        r.setDateReception(LocalDate.now());
+        r.setTerminee(terminee);
+        r.setMotifEcart(motif);
+        return r;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────

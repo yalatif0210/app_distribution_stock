@@ -401,8 +401,8 @@ public class AnalysesService {
                 boolean termine = "EXECUTE".equals(l.getStatut());
                 boolean retard = !termine && p.getDateValidation() != null
                         && ChronoUnit.DAYS.between(p.getDateValidation(), LocalDateTime.now()) > b.retardJours();
-                double delai = l.getDateExecution() != null && p.getDateValidation() != null
-                        ? Math.max(0, ChronoUnit.DAYS.between(p.getDateValidation().toLocalDate(), l.getDateExecution().toLocalDate())) : -1;
+                double delai = l.dateEffectiveReception() != null && p.getDateValidation() != null
+                        ? Math.max(0, ChronoUnit.DAYS.between(p.getDateValidation().toLocalDate(), l.dateEffectiveReception())) : -1;
                 parSite.computeIfAbsent(l.getStructureSource().getNom(), k -> new ArrayList<>()).add(new double[]{taux, retard ? 1 : 0, delai});
             }
         }
