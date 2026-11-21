@@ -151,12 +151,15 @@ public class StatistiquesService {
         dto.setProgramme(programmeId == null ? "Tous les programmes"
                 : programmeRepo.findById(programmeId).map(pr -> pr.getNom()).orElse("Programme " + programmeId));
 
-        // Toutes les régions du périmètre apparaissent, même sans plan dans l'année
+        // Les régions qui ont validé au moins un plan dans l'année sont comparées ; les autres
+        // sont seulement citées (au niveau national, un tableau de régions vides serait illisible)
         List<Region> regions = regionIds == null ? regionRepo.findAll() : regionRepo.findAllById(regionIds);
         Map<Long, List<PlanReattribution>> parRegion = perimetre.stream().collect(Collectors.groupingBy(p -> p.getRegion().getId()));
-        dto.setRegions(regions.stream()
-                .map(r -> delaisRegion(r.getId(), r.getNom(), parRegion.getOrDefault(r.getId(), List.of())))
+        dto.setRegions(regions.stream().filter(r -> parRegion.containsKey(r.getId()))
+                .map(r -> delaisRegion(r.getId(), r.getNom(), parRegion.get(r.getId())))
                 .sorted(Comparator.comparing(DelaisDTO.Region::getRegion)).toList());
+        dto.setRegionsSansPlan(regions.stream().filter(r -> !parRegion.containsKey(r.getId()))
+                .map(Region::getNom).sorted().toList());
         dto.setEnsemble(delaisRegion(null, "Ensemble des régions", tous));
 
         for (int m = 1; m <= 12; m++) {

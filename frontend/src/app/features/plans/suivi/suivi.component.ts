@@ -58,7 +58,7 @@ import { LignePlan, PeriodeSaisie, PlanReattribution, Reception } from '../../..
           <mat-label>Statut</mat-label>
           <mat-select [(ngModel)]="selectedStatut" (selectionChange)="charger()">
             <mat-option value="">Tous les statuts</mat-option>
-            <mat-option value="BROUILLON" *ngIf="!auth.isAdmin()">Brouillon</mat-option>
+            <mat-option value="BROUILLON" *ngIf="!auth.isAdmin() && !auth.isGestionnaire()">Brouillon</mat-option>
             <mat-option value="VALIDE">Validé</mat-option>
             <mat-option value="EN_COURS">En cours</mat-option>
             <mat-option value="CLOTURE">Clôturé</mat-option>
@@ -382,7 +382,8 @@ export class SuiviComponent implements OnInit {
     this.loading = true;
     this.planService.getPlans(this.selectedPeriodeId ?? undefined, this.selectedStatut || undefined).subscribe({
       next: p => {
-        this.plans = this.auth.isAdmin() ? p.filter(x => x.statut !== 'BROUILLON') : p;
+        // Un brouillon n'est pas encore une décision : ni l'admin ni les sites ne le voient
+        this.plans = this.auth.isAdmin() || this.auth.isGestionnaire() ? p.filter(x => x.statut !== 'BROUILLON') : p;
         this.filtrerPlans();
         this.loading = false;
       },

@@ -267,6 +267,9 @@ import { Pagination, PaginationComponent } from '../../shared/pagination';
           </tbody>
         </table></div>
         <app-pagination [p]="pgDelais" [total]="d.regions.length"></app-pagination>
+        <div *ngIf="d.regionsSansPlan.length" style="padding:.6rem 1rem;font-size:.78rem;color:var(--text-secondary);border-top:1px solid var(--border-color);">
+          {{ d.regionsSansPlan.length }} région(s) sans plan validé en {{ d.annee }}{{ d.regionsSansPlan.length <= 8 ? ' : ' + d.regionsSansPlan.join(', ') : '' }}.
+        </div>
       </div>
 
       <div class="deux" *ngIf="aDesDelais">

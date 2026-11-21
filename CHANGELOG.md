@@ -4,6 +4,21 @@ Numérotation [SemVer](https://semver.org/lang/fr/) : MAJEUR.MINEUR.CORRECTIF.
 Le numéro est porté par `backend/pom.xml`, `frontend/package.json`, le tag git `vX.Y.Z`
 et l'étiquette des images Docker (`VERSION` dans `.env`).
 
+## [1.4.2] - 2026-11-21
+
+### Corrigé
+- Répartition manuelle : le paginateur ajouté en 1.4.1 décalait le panneau des sources sous
+  celui des sites à approvisionner ; les deux panneaux sont de nouveau côte à côte.
+- Suivi des plans : les gestionnaires de site ne voient plus les plans en brouillon, qui ne
+  sont pas encore des décisions.
+
+### Modifié
+- Statistiques, délais par région : seules les régions ayant validé au moins un plan dans
+  l'année sont comparées ; les autres sont citées sous le tableau.
+- Génération d'un plan : la période ouverte de la région est proposée d'office au pharmacien.
+- Jeu de démonstration : deux régions fictives, six mois d'historique, réceptions confirmées
+  par les sites, délais d'exécution différents, compte administrateur de démonstration.
+
 ## [1.4.1] - 2026-11-20
 
 ### Modifié

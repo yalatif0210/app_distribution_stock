@@ -753,7 +753,14 @@ export class GenerationComponent implements OnInit, AfterViewInit {
       next: r => { this.iaDisponible = r.disponible; this.mode = r.disponible ? 'IA' : 'MANUEL'; },
       error: () => { this.iaDisponible = false; this.mode = 'MANUEL'; }
     });
-    this.refService.getPeriodes().subscribe(p => this.periodes = p);
+    this.refService.getPeriodes().subscribe(p => {
+      this.periodes = p;
+      // Le pharmacien n'a qu'une période ouverte à la fois : on la propose d'office
+      if (!this.periodeId && this.auth.isPharmacienRegion()) {
+        const ouvertes = p.filter(x => x.statut === 'OUVERTE');
+        if (ouvertes.length === 1) this.periodeId = ouvertes[0].id;
+      }
+    });
     this.refService.getProgrammesGeres().subscribe(p => this.programmes = p);
     if (this.regionId) {
       this.refService.getRegions().subscribe(regions => {

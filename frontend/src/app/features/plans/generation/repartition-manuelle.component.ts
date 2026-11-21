@@ -178,8 +178,9 @@ interface Ligne {
             </ng-container>
           </tbody>
         </table>
+        <!-- Dans le panneau : la grille n'a que deux colonnes, cibles et sources -->
+        <app-pagination [p]="pgCibles" [total]="cibles.length"></app-pagination>
       </div>
-      <app-pagination [p]="pgCibles" [total]="cibles.length"></app-pagination>
 
       <!-- ── Sources ── -->
       <div class="encart sources">

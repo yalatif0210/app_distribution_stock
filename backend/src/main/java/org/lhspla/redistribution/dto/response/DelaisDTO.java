@@ -13,7 +13,10 @@ import java.util.List;
 public class DelaisDTO {
     private int annee;
     private String programme;
+    /** Régions qui ont validé au moins un plan dans l'année. */
     private List<Region> regions = new ArrayList<>();
+    /** Régions du périmètre sans plan validé dans l'année (citées, pas comparées). */
+    private List<String> regionsSansPlan = new ArrayList<>();
     /** Toutes les régions réunies (moyenne de référence, sans détail des autres régions). */
     private Region ensemble;
     /** Délai moyen d'exécution des plans, mois de validation par mois, pour chaque région. */

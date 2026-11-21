@@ -1,11 +1,11 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- Suppression du jeu de démonstration
--- Supprime tout ce qui touche la « Région Démo » et les programmes DEMO-*, y compris
+-- Supprime tout ce qui touche la « Région Démo », la « Région Démo Est » et les programmes DEMO-*, y compris
 -- ce qui a été créé pendant les tests (plans, périodes, sites ajoutés dans la région…).
 -- Sans effet si le jeu n'est pas chargé. Les données réelles ne sont pas touchées.
 -- ════════════════════════════════════════════════════════════════════════════
 
-CREATE TEMP TABLE d_regions    ON COMMIT DROP AS SELECT id FROM regions WHERE nom = 'Région Démo';
+CREATE TEMP TABLE d_regions    ON COMMIT DROP AS SELECT id FROM regions WHERE nom IN ('Région Démo', 'Région Démo Est');
 CREATE TEMP TABLE d_districts  ON COMMIT DROP AS SELECT id FROM districts WHERE region_id IN (SELECT id FROM d_regions);
 CREATE TEMP TABLE d_structures ON COMMIT DROP AS
     SELECT id FROM structures WHERE district_id IN (SELECT id FROM d_districts) OR code LIKE 'DEMO-%';

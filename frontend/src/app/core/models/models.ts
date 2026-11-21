@@ -81,6 +81,8 @@ export interface DelaiRegion {
 
 export interface Delais {
   annee: number; programme: string; regions: DelaiRegion[]; ensemble: DelaiRegion;
+  /** Régions du périmètre sans plan validé dans l'année. */
+  regionsSansPlan: string[];
   parMois: { mois: number; delaiMoyenParRegion: Record<string, number> }[];
 }
 
